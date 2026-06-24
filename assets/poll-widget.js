@@ -71,7 +71,8 @@ function injectStyles() {
   .pollx .pollx-comment .pollx-cmeta{font-size:.8rem;color:#888;margin-bottom:.2rem}
   .pollx .pollx-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-start}
   .pollx .pollx-row input[type=text]{flex:1;min-width:160px}
-  .pollx .pollx-muted{color:#888;font-size:.9rem}`;
+  .pollx .pollx-muted{color:#888;font-size:.9rem}
+  .pollx .pollx-thanks{font-size:1.1rem;padding:1rem 1.15rem;display:flex;gap:.5rem;align-items:center;position:sticky;bottom:8px}`;
   document.head.appendChild(style);
 }
 
@@ -259,13 +260,13 @@ export async function renderPoll(root, pollId) {
       }
       localStorage.setItem(votedKey, "1");
       alreadyVoted = true;
-      render();
+      confirmSubmitted(form);
     } catch (err) {
       btn.disabled = false;
       if (String(err?.code).includes("permission-denied")) {
         localStorage.setItem(votedKey, "1");
         alreadyVoted = true;
-        render();
+        confirmSubmitted(form);
       } else {
         msg.textContent = "Something went wrong. Please try again.";
       }
@@ -357,6 +358,21 @@ function notice(text, kind) {
   const cls = kind === "err" ? "pollx-note pollx-err"
     : kind === "ok" ? "pollx-note pollx-ok" : "pollx-note";
   return `<div class="${cls}">${esc(text)}</div>`;
+}
+
+// Confirm a submission right where the user is (just under the Submit button),
+// so it's visible no matter how far down a long form they scrolled.
+function confirmSubmitted(form) {
+  form.querySelectorAll("input, textarea, button").forEach(el => { el.disabled = true; });
+  form.querySelectorAll("[data-rank-opt]").forEach(el => { el.style.pointerEvents = "none"; });
+  form.style.opacity = ".6";
+  form.style.pointerEvents = "none";
+  const banner = document.createElement("div");
+  banner.className = "pollx-note pollx-ok pollx-thanks";
+  banner.setAttribute("role", "status");
+  banner.innerHTML = "✓ <strong>Thank you!</strong> Your response has been submitted.";
+  form.insertAdjacentElement("afterend", banner);
+  try { banner.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
 }
 
 function cssEscape(s) {
