@@ -44,6 +44,7 @@ function injectStyles() {
   .pollx *{box-sizing:border-box}
   .pollx h1{font-size:1.5rem;margin:0 0 .25rem}
   .pollx .pollx-desc{color:#555;margin:0 0 1.25rem}
+  .pollx .pollx-closes{color:#33405e;font-size:.9rem;margin:.1rem 0 1.1rem;font-weight:600}
   .pollx .pollx-q{background:#fff;border:1px solid #e6e6e6;border-radius:12px;padding:1rem 1.15rem;margin:0 0 1rem}
   .pollx .pollx-q h3{margin:0 0 .6rem;font-size:1.05rem}
   .pollx .pollx-req{color:#c0392b}
@@ -143,6 +144,7 @@ export async function renderPoll(root, pollId) {
     root.innerHTML = `
       <h1>${esc(poll.title || "Poll")}</h1>
       ${poll.description ? `<p class="pollx-desc">${esc(poll.description)}</p>` : ""}
+      ${isOpen && closesAt ? `<p class="pollx-closes">🗳️ Voting closes ${fmt(closesAt)}</p>` : ""}
       <div id="pollx-body"></div>
       <div id="pollx-results"></div>
     `;
