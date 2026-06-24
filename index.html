@@ -10,10 +10,13 @@
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1a1a;background:var(--bg);line-height:1.5}
     a{color:var(--brand)}
     .wrap{max-width:920px;margin:0 auto;padding:1.25rem}
-    header.bar{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;box-shadow:0 2px 10px rgba(20,22,40,.06)}
-    header.bar .wrap{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding-top:1rem;padding-bottom:1rem}
+    header.bar{background:#fff;border-bottom:1px solid var(--line);position:fixed;top:0;left:0;right:0;z-index:30;box-shadow:0 2px 10px rgba(20,22,40,.06)}
+    header.bar .wrap{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:nowrap;padding-top:.85rem;padding-bottom:.85rem}
+    header .row{flex-wrap:nowrap}
     header .brand{font-weight:700;font-size:1.15rem;white-space:nowrap}
-    header #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:48vw}
+    header #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42vw}
+    /* push the page content below the fixed header so it's never clipped */
+    #app-view > .wrap{padding-top:4.75rem}
     .muted{color:var(--muted)}
     .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1.25rem;margin:0 0 1.1rem}
     h1{font-size:1.5rem;margin:.2rem 0 1rem}
@@ -321,10 +324,13 @@
 
       const title = $("#f-title").value.trim();
       const cleanQs = builderQuestions
-        .map(q => ({
-          id: q.id, type: q.type, title: q.title.trim(), required: !!q.required,
-          options: q.options ? q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o=>o.label) : undefined
-        }))
+        .map(q => {
+          // Build the object WITHOUT an `options` key for text questions — Firestore
+          // rejects `undefined` field values, so we must omit it rather than set undefined.
+          const cq = { id: q.id, type: q.type, title: q.title.trim(), required: !!q.required };
+          if (q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
+          return cq;
+        })
         .filter(q => q.title && (TEXT_TYPES.includes(q.type) || (q.options && q.options.length >= 2)));
       if (!cleanQs.length) return showFormMsg("Add at least one question (choice/ranking questions need 2+ options).", "err");
       const revealStr = $("#f-reveal").value, closeStr = $("#f-close").value;
