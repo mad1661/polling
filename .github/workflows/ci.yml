@@ -1,0 +1,30 @@
+name: Validate HTML & JS
+
+# Lightweight PR check: gives every pull request (and pushes to main) a
+# green/red signal by validating JS syntax and linting the HTML.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check JS syntax (modules + inline <script> blocks)
+        run: node scripts/check-syntax.mjs
+
+      - name: Lint HTML
+        run: npx --yes htmlhint@1 *.html
