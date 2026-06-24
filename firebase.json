@@ -14,6 +14,9 @@
       "firestore.rules",
       "scripts/**"
     ],
+    "redirects": [
+      { "source": "/admin.html", "destination": "/", "type": 301 }
+    ],
     "headers": [
       {
         "source": "**/*.html",

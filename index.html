@@ -3,13 +3,628 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=/admin.html">
   <title>Polls — Admin</title>
-  <script>location.replace("/admin.html" + location.search + location.hash);</script>
-  <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:2rem;color:#333}</style>
+  <style>
+    :root{--brand:#3b5bdb;--brand-d:#2f49b3;--line:#e6e6e6;--muted:#777;--bg:#f5f6fa}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1a1a;background:var(--bg);line-height:1.5}
+    a{color:var(--brand)}
+    .wrap{max-width:920px;margin:0 auto;padding:1.25rem}
+    header.topbar{background:#fff;border-bottom:1px solid var(--line);position:fixed;top:0;left:0;right:0;z-index:30;box-shadow:0 2px 10px rgba(20,22,40,.06)}
+    header.topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:nowrap;padding-top:.85rem;padding-bottom:.85rem}
+    header .row{flex-wrap:nowrap}
+    header .brand{font-weight:700;font-size:1.15rem;white-space:nowrap}
+    header #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42vw}
+    /* push the page content below the fixed header so it's never clipped */
+    #app-view > .wrap{padding-top:4.75rem}
+    .muted{color:var(--muted)}
+    .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1.25rem;margin:0 0 1.1rem}
+    h1{font-size:1.5rem;margin:.2rem 0 1rem}
+    h2{font-size:1.2rem;margin:0 0 .9rem}
+    h3{font-size:1.02rem;margin:0 0 .5rem}
+    label.field{display:block;margin:0 0 .85rem}
+    label.field > span{display:block;font-weight:600;font-size:.9rem;margin-bottom:.3rem}
+    input[type=text],input[type=email],input[type=password],input[type=datetime-local],textarea,select{
+      width:100%;padding:.6rem .7rem;border:1px solid #d6d6d6;border-radius:9px;font:inherit;background:#fff}
+    textarea{resize:vertical}
+    input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(59,91,219,.15)}
+    .btn{display:inline-block;background:var(--brand);color:#fff;border:0;border-radius:9px;padding:.6rem 1.1rem;font:inherit;font-weight:600;cursor:pointer}
+    .btn:hover{background:var(--brand-d)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn.secondary{background:#eef0f6;color:#2a2f45}
+    .btn.secondary:hover{background:#e2e6f1}
+    .btn.danger{background:#fff;color:#c0392b;border:1px solid #f0c4bd}
+    .btn.danger:hover{background:#fdecea}
+    .btn.sm{padding:.4rem .7rem;font-size:.88rem}
+    .link{background:none;border:0;color:var(--brand);cursor:pointer;font:inherit;padding:0}
+    .link.danger{color:#c0392b}
+    .row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+    @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+    .qcard{border:1px solid var(--line);border-radius:11px;padding:.85rem;margin:.6rem 0;background:#fbfbfd}
+    .qhead{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem}
+    .qtype{display:inline-block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);background:#eef1fb;padding:.15rem .5rem;border-radius:6px}
+    .req-toggle{display:flex;align-items:center;gap:.35rem;font-size:.85rem;color:#444}
+    .req-toggle input{width:auto}
+    .opt-row{display:flex;gap:.5rem;align-items:center;margin:.35rem 0}
+    .opt-row input{flex:1}
+    .pill{display:inline-block;font-size:.78rem;padding:.15rem .55rem;border-radius:20px;font-weight:600}
+    .pill.open{background:#e8f9ee;color:#137a3a}.pill.closed{background:#fdeaea;color:#b3261e}
+    .pill.hidden{background:#fff4e5;color:#a35b00}.pill.shown{background:#e9f0ff;color:#284bbd}
+    .poll-item{border:1px solid var(--line);border-radius:12px;padding:1rem;margin:.7rem 0}
+    .poll-item .top{display:flex;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+    .msg{padding:.6rem .8rem;border-radius:9px;margin:.6rem 0;font-size:.92rem}
+    .msg.err{background:#fff1f0;border:1px solid #ffccc7;color:#a8071a}
+    .msg.ok{background:#f0fbf4;border:1px solid #c6efd3;color:#0b6b32}
+    dialog{border:0;border-radius:14px;padding:0;max-width:720px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+    dialog::backdrop{background:rgba(20,22,30,.45)}
+    .dlg-head{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--line)}
+    .dlg-body{padding:1.25rem;max-height:72vh;overflow:auto}
+    code,.codebox{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .codebox{display:block;white-space:pre-wrap;word-break:break-all;background:#0f1729;color:#d6e2ff;border-radius:10px;padding:.85rem;font-size:.82rem;margin:.4rem 0}
+    .bar{position:relative;background:#eef0f4;border-radius:8px;height:32px;margin:.4rem 0;overflow:hidden}
+    .bar>span{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#5878f0,#3b5bdb);border-radius:8px}
+    .bar>em{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 .7rem;font-style:normal;font-weight:600;font-size:.88rem}
+    .hide{display:none!important}
+    .center{max-width:420px;margin:8vh auto 0}
+  </style>
 </head>
 <body>
-  <p>Redirecting to the admin page… If it doesn't happen automatically,
-     <a href="/admin.html">click here</a>.</p>
+  <!-- ===================== LOGIN ===================== -->
+  <div id="login-view">
+    <div class="wrap">
+      <div class="card center">
+        <h1>Admin sign in</h1>
+        <p class="muted">Sign in to create polls and view every poll's results.</p>
+        <form id="login-form">
+          <label class="field"><span>Email</span>
+            <input type="email" id="login-email" autocomplete="username" required></label>
+          <label class="field"><span>Password</span>
+            <input type="password" id="login-password" autocomplete="current-password" required></label>
+          <button class="btn" type="submit" style="width:100%">Sign in</button>
+          <div id="login-msg" class="msg err hide"></div>
+        </form>
+        <p class="muted" style="font-size:.85rem;margin-top:1rem">
+          Accounts are created by the site owner in the Firebase console
+          (Authentication → Users). There is no public sign-up.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== APP ===================== -->
+  <div id="app-view" class="hide">
+    <header class="topbar">
+      <div class="wrap">
+        <span class="brand">📊 Polls Admin</span>
+        <span class="row">
+          <span class="muted" id="who"></span>
+          <button class="btn secondary sm" id="logout-btn">Sign out</button>
+        </span>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <!-- Builder -->
+      <div class="card">
+        <h2 id="builder-title">Create a new poll</h2>
+        <form id="poll-form">
+          <input type="hidden" id="edit-id">
+          <label class="field"><span>Title</span>
+            <input type="text" id="f-title" placeholder="e.g. Community Survey — June" required></label>
+          <label class="field"><span>Description (optional)</span>
+            <textarea id="f-desc" rows="2" placeholder="A sentence about this poll…"></textarea></label>
+
+          <h3 style="margin-top:1rem">Questions</h3>
+          <p class="muted" style="font-size:.85rem;margin-top:-.3rem">
+            Tip: use <b>Short text</b> for things like Name, Member #, or Car # — and tick
+            <b>Required</b> if they must answer. Text answers are private (only you see them).
+          </p>
+          <div id="questions-editor"></div>
+          <div class="row" style="margin:.5rem 0 1rem">
+            <button type="button" class="btn secondary sm" data-add="single">+ Multiple choice (pick one)</button>
+            <button type="button" class="btn secondary sm" data-add="multiple">+ Checkboxes (pick many)</button>
+            <button type="button" class="btn secondary sm" data-add="rank">+ Ranking (click in order)</button>
+            <button type="button" class="btn secondary sm" data-add="short">+ Short text (name, number…)</button>
+            <button type="button" class="btn secondary sm" data-add="text">+ Long text (paragraph)</button>
+          </div>
+
+          <div class="grid2">
+            <label class="field"><span>Results revealed at</span>
+              <input type="datetime-local" id="f-reveal" required>
+              <span class="row" style="margin-top:.4rem">
+                <button type="button" class="link" data-reveal-weeks="1">+1 week</button>
+                <button type="button" class="link" data-reveal-weeks="2">+2 weeks</button>
+                <button type="button" class="link" data-reveal-weeks="3">+3 weeks</button>
+              </span>
+            </label>
+            <label class="field"><span>Voting closes at</span>
+              <input type="datetime-local" id="f-close" required>
+              <span class="row" style="margin-top:.4rem">
+                <button type="button" class="link" data-close-weeks="2">+2 weeks</button>
+                <button type="button" class="link" data-close-weeks="3">+3 weeks</button>
+                <button type="button" class="link" data-close-weeks="4">+4 weeks</button>
+              </span>
+            </label>
+          </div>
+          <p class="muted" style="font-size:.85rem;margin-top:-.3rem">
+            Example: reveal in 2 weeks, close in 3 weeks — people keep voting for a
+            week after numbers go public. Results stay secret to the public until the reveal time.
+          </p>
+
+          <div class="row" style="margin-top:.5rem">
+            <button class="btn" type="submit" id="save-btn">Create poll</button>
+            <button class="btn secondary hide" type="button" id="cancel-edit">Cancel edit</button>
+          </div>
+          <div id="form-msg" class="msg hide"></div>
+        </form>
+      </div>
+
+      <!-- Polls list -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">All polls</h2>
+          <button class="btn secondary sm" id="refresh-btn">Refresh</button>
+        </div>
+        <div id="polls-list" style="margin-top:.75rem"><p class="muted">Loading…</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results dialog -->
+  <dialog id="results-dlg">
+    <div class="dlg-head"><h2 id="results-title" style="margin:0">Results</h2>
+      <button class="link" onclick="document.getElementById('results-dlg').close()">✕ Close</button></div>
+    <div class="dlg-body" id="results-body"></div>
+  </dialog>
+
+  <!-- Embed dialog -->
+  <dialog id="embed-dlg">
+    <div class="dlg-head"><h2 style="margin:0">Embed this poll</h2>
+      <button class="link" onclick="document.getElementById('embed-dlg').close()">✕ Close</button></div>
+    <div class="dlg-body" id="embed-body"></div>
+  </dialog>
+
+  <script type="module">
+    import { db, auth } from "./assets/firebase-config.js";
+    import {
+      signInWithEmailAndPassword, signOut, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+    import {
+      collection, doc, addDoc, updateDoc, deleteDoc, getDocs,
+      query, orderBy, serverTimestamp, Timestamp
+    } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+    // ---------- helpers ----------
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => (
+      { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const escAttr = esc;
+    const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id" + Math.random().toString(36).slice(2));
+    const toDate = (ts) => (ts && ts.toDate) ? ts.toDate() : (ts ? new Date(ts) : null);
+    const fmt = (d) => d ? d.toLocaleString(undefined, { dateStyle:"medium", timeStyle:"short" }) : "—";
+    const pct = (n,t) => t>0 ? Math.round(n/t*100) : 0;
+    const OPTION_TYPES = ["single","multiple","rank"];
+    const TEXT_TYPES = ["short","text"];
+    function toLocalInput(d){
+      const p = (n)=>String(n).padStart(2,"0");
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    function weeksFromNow(w){ const d=new Date(); d.setDate(d.getDate()+w*7); return d; }
+    const typeLabel = (t) => ({single:"Multiple choice",multiple:"Checkboxes",rank:"Ranking",short:"Short text",text:"Long text"}[t] || "Question");
+
+    // ---------- auth ----------
+    onAuthStateChanged(auth, (user) => {
+      const isAdmin = user && !user.isAnonymous;
+      $("#login-view").classList.toggle("hide", !!isAdmin);
+      $("#app-view").classList.toggle("hide", !isAdmin);
+      if (isAdmin) { $("#who").textContent = user.email || "signed in"; loadPolls(); }
+    });
+
+    $("#login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = $("#login-msg"); msg.classList.add("hide");
+      try {
+        await signInWithEmailAndPassword(auth, $("#login-email").value.trim(), $("#login-password").value);
+      } catch (err) { msg.textContent = friendlyAuthError(err); msg.classList.remove("hide"); }
+    });
+    $("#logout-btn").addEventListener("click", () => signOut(auth));
+
+    function friendlyAuthError(err){
+      const c = String(err?.code || "");
+      if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found"))
+        return "Incorrect email or password.";
+      if (c.includes("too-many-requests")) return "Too many attempts. Try again later.";
+      if (c.includes("operation-not-allowed")) return "Email/Password sign-in isn't enabled in Firebase yet.";
+      return "Sign in failed: " + (err?.message || c);
+    }
+
+    // ---------- builder ----------
+    let builderQuestions = [];
+
+    function blankQuestion(type){
+      const q = { id: uid(), type, title: "", required: false };
+      if (OPTION_TYPES.includes(type)) q.options = [{ id: uid(), label: "" }, { id: uid(), label: "" }];
+      return q;
+    }
+
+    function renderQuestions(){
+      const box = $("#questions-editor");
+      if (!builderQuestions.length){ box.innerHTML = `<p class="muted">No questions yet — add one below.</p>`; return; }
+      box.innerHTML = builderQuestions.map((q) => `
+        <div class="qcard" data-qid="${q.id}">
+          <div class="qhead">
+            <span class="qtype">${typeLabel(q.type)}</span>
+            <span class="row" style="gap:.7rem">
+              <label class="req-toggle"><input type="checkbox" data-field="required" ${q.required?"checked":""}> Required</label>
+              <button type="button" class="link danger" data-act="del-q">Remove</button>
+            </span>
+          </div>
+          <input type="text" data-field="title" placeholder="${q.type==='short'?'Question (e.g. Member #)':'Question text'}" value="${escAttr(q.title)}">
+          ${OPTION_TYPES.includes(q.type) ? `
+            <div class="opts" style="margin-top:.5rem">
+              ${q.options.map(o => `
+                <div class="opt-row" data-oid="${o.id}">
+                  <input type="text" data-field="opt" placeholder="Option" value="${escAttr(o.label)}">
+                  <button type="button" class="link danger" data-act="del-opt" title="Remove option">✕</button>
+                </div>`).join("")}
+              <button type="button" class="link" data-act="add-opt">+ Add option</button>
+            </div>` : ""}
+        </div>`).join("");
+    }
+
+    // delegated input -> update model (no re-render, keeps focus)
+    $("#questions-editor").addEventListener("input", (e) => {
+      const card = e.target.closest(".qcard"); if (!card) return;
+      const q = builderQuestions.find(x => x.id === card.dataset.qid); if (!q) return;
+      const f = e.target.dataset.field;
+      if (f === "title") q.title = e.target.value;
+      else if (f === "required") q.required = e.target.checked;
+      else if (f === "opt") {
+        const oid = e.target.closest(".opt-row").dataset.oid;
+        const o = q.options.find(x => x.id === oid); if (o) o.label = e.target.value;
+      }
+    });
+    // delegated clicks -> structural changes (re-render)
+    $("#questions-editor").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-act]"); if (!btn) return;
+      const card = e.target.closest(".qcard"); const q = builderQuestions.find(x => x.id === card.dataset.qid);
+      const act = btn.dataset.act;
+      if (act === "del-q") builderQuestions = builderQuestions.filter(x => x.id !== q.id);
+      else if (act === "add-opt") q.options.push({ id: uid(), label: "" });
+      else if (act === "del-opt") {
+        const oid = e.target.closest(".opt-row").dataset.oid;
+        q.options = q.options.filter(o => o.id !== oid);
+      }
+      renderQuestions();
+    });
+    document.querySelectorAll("[data-add]").forEach(b =>
+      b.addEventListener("click", () => { builderQuestions.push(blankQuestion(b.dataset.add)); renderQuestions(); }));
+
+    document.querySelectorAll("[data-reveal-weeks]").forEach(b =>
+      b.addEventListener("click", () => { $("#f-reveal").value = toLocalInput(weeksFromNow(+b.dataset.revealWeeks)); }));
+    document.querySelectorAll("[data-close-weeks]").forEach(b =>
+      b.addEventListener("click", () => { $("#f-close").value = toLocalInput(weeksFromNow(+b.dataset.closeWeeks)); }));
+
+    function resetBuilder(){
+      $("#edit-id").value = "";
+      $("#poll-form").reset();
+      builderQuestions = [];
+      renderQuestions();
+      $("#builder-title").textContent = "Create a new poll";
+      $("#save-btn").textContent = "Create poll";
+      $("#cancel-edit").classList.add("hide");
+      $("#form-msg").classList.add("hide");
+    }
+    $("#cancel-edit").addEventListener("click", resetBuilder);
+
+    $("#poll-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = $("#form-msg"); msg.className = "msg hide";
+
+      const title = $("#f-title").value.trim();
+      const cleanQs = builderQuestions
+        .map(q => {
+          // Build the object WITHOUT an `options` key for text questions — Firestore
+          // rejects `undefined` field values, so we must omit it rather than set undefined.
+          const cq = { id: q.id, type: q.type, title: q.title.trim(), required: !!q.required };
+          if (q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
+          return cq;
+        })
+        .filter(q => q.title && (TEXT_TYPES.includes(q.type) || (q.options && q.options.length >= 2)));
+      if (!cleanQs.length) return showFormMsg("Add at least one question (choice/ranking questions need 2+ options).", "err");
+      const revealStr = $("#f-reveal").value, closeStr = $("#f-close").value;
+      if (!revealStr || !closeStr) return showFormMsg("Please set both the reveal and close times.", "err");
+      const revealAt = new Date(revealStr), closesAt = new Date(closeStr);
+      if (revealAt > closesAt) return showFormMsg("The reveal time should be on or before the close time.", "err");
+
+      const payload = {
+        title,
+        description: $("#f-desc").value.trim(),
+        questions: cleanQs,
+        revealAt: Timestamp.fromDate(revealAt),
+        closesAt: Timestamp.fromDate(closesAt),
+        ownerUid: auth.currentUser.uid,
+        ownerEmail: auth.currentUser.email || null
+      };
+
+      const btn = $("#save-btn"); btn.disabled = true;
+      const editId = $("#edit-id").value;
+      try {
+        if (editId) await updateDoc(doc(db, "polls", editId), payload);
+        else { payload.createdAt = serverTimestamp(); await addDoc(collection(db, "polls"), payload); }
+        resetBuilder();
+        showFormMsg("Saved.", "ok");
+        await loadPolls();
+      } catch (err) {
+        showFormMsg("Could not save: " + (err?.message || err), "err");
+      } finally { btn.disabled = false; }
+    });
+    function showFormMsg(t, kind){ const m=$("#form-msg"); m.textContent=t; m.className="msg "+kind; }
+
+    // ---------- polls list ----------
+    $("#refresh-btn").addEventListener("click", loadPolls);
+
+    async function loadPolls(){
+      const list = $("#polls-list");
+      list.innerHTML = `<p class="muted">Loading…</p>`;
+      let snap;
+      try { snap = await getDocs(query(collection(db, "polls"), orderBy("createdAt", "desc"))); }
+      catch (e) {
+        try { snap = await getDocs(collection(db, "polls")); }
+        catch (e2){ list.innerHTML = `<div class="msg err">Could not load polls: ${esc(e2.message||e2)}</div>`; return; }
+      }
+      if (snap.empty){ list.innerHTML = `<p class="muted">No polls yet. Create your first one above.</p>`; return; }
+
+      const now = new Date();
+      list.innerHTML = "";
+      snap.forEach(d => {
+        const p = d.data(); const id = d.id;
+        const closesAt = toDate(p.closesAt), revealAt = toDate(p.revealAt);
+        const open = !closesAt || now < closesAt;
+        const shown = !revealAt || now >= revealAt;
+        const item = document.createElement("div");
+        item.className = "poll-item";
+        item.innerHTML = `
+          <div class="top">
+            <div>
+              <strong>${esc(p.title || "Untitled")}</strong>
+              <div class="muted" style="font-size:.86rem">${(p.questions||[]).length} question(s) · created ${fmt(toDate(p.createdAt))}</div>
+            </div>
+            <div class="row">
+              <span class="pill ${open?"open":"closed"}">${open?"Voting open":"Closed"}</span>
+              <span class="pill ${shown?"shown":"hidden"}">${shown?"Results public":"Results hidden"}</span>
+            </div>
+          </div>
+          <div class="muted" style="font-size:.86rem;margin:.5rem 0">
+            Reveals: ${fmt(revealAt)} · Closes: ${fmt(closesAt)}
+          </div>
+          <div class="row">
+            <button class="btn sm" data-act="results">View results</button>
+            <button class="btn secondary sm" data-act="embed">Get embed code</button>
+            <button class="btn secondary sm" data-act="edit">Edit</button>
+            <button class="btn danger sm" data-act="delete">Delete</button>
+          </div>`;
+        item.querySelector('[data-act="results"]').onclick = () => viewResults(id, p);
+        item.querySelector('[data-act="embed"]').onclick = () => showEmbed(id, p);
+        item.querySelector('[data-act="edit"]').onclick = () => editPoll(id, p);
+        item.querySelector('[data-act="delete"]').onclick = () => deletePoll(id, p);
+        list.appendChild(item);
+      });
+    }
+
+    function editPoll(id, p){
+      resetBuilder();
+      $("#edit-id").value = id;
+      $("#f-title").value = p.title || "";
+      $("#f-desc").value = p.description || "";
+      const r = toDate(p.revealAt), c = toDate(p.closesAt);
+      if (r) $("#f-reveal").value = toLocalInput(r);
+      if (c) $("#f-close").value = toLocalInput(c);
+      builderQuestions = (p.questions || []).map(q => ({
+        id: q.id || uid(), type: q.type, title: q.title, required: !!q.required,
+        options: q.options ? q.options.map(o => ({ id:o.id||uid(), label:o.label })) : undefined
+      }));
+      renderQuestions();
+      $("#builder-title").textContent = "Edit poll";
+      $("#save-btn").textContent = "Save changes";
+      $("#cancel-edit").classList.remove("hide");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function deletePoll(id, p){
+      if (!confirm(`Delete "${p.title || "this poll"}"?\n\nThis removes the poll and all its responses. This cannot be undone.`)) return;
+      try {
+        for (const sub of ["responses", "details"]) {
+          const cs = await getDocs(collection(db, "polls", id, sub));
+          await Promise.all(cs.docs.map(d => deleteDoc(d.ref)));
+        }
+        await deleteDoc(doc(db, "polls", id));
+        await loadPolls();
+      } catch (e) { alert("Could not delete: " + (e?.message || e)); }
+    }
+
+    // ---------- results (admin sees everything, anytime) ----------
+    async function viewResults(id, p){
+      const dlg = $("#results-dlg");
+      $("#results-title").textContent = `Results — ${p.title || "Poll"}`;
+      const body = $("#results-body");
+      body.innerHTML = `<p class="muted">Loading…</p>`;
+      dlg.showModal();
+
+      let responses = [], details = [];
+      try {
+        const rs = await getDocs(collection(db, "polls", id, "responses"));
+        responses = rs.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) { body.innerHTML = `<div class="msg err">Could not load responses: ${esc(e.message||e)}</div>`; return; }
+      try {
+        const ds = await getDocs(collection(db, "polls", id, "details"));
+        details = ds.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) { /* none */ }
+      const detailMap = Object.fromEntries(details.map(d => [d.id, d.answers || {}]));
+
+      const total = responses.length;
+      const qs = p.questions || [];
+      let html = `<div class="row" style="justify-content:space-between;align-items:center">
+          <p class="muted" style="margin:0">${total} response(s)</p>
+          <button class="btn secondary sm" id="csv-btn" ${total?"":"disabled"}>Download CSV</button>
+        </div>`;
+
+      html += qs.map(q => {
+        if (TEXT_TYPES.includes(q.type)){
+          const ans = details.map(d => d.answers?.[q.id]).filter(v => v != null && v !== "");
+          return `<div class="card" style="margin:.7rem 0"><h3>${esc(q.title)} <span class="muted" style="font-weight:400;font-size:.8rem">· private</span></h3>${
+            ans.length ? ans.map(a=>`<div class="msg" style="background:#f7f8fa">${esc(a)}</div>`).join("")
+                       : `<p class="muted">No answers.</p>`}</div>`;
+        }
+        if (q.type === "rank"){
+          const opts = q.options || []; const N = opts.length;
+          const points = Object.fromEntries(opts.map(o=>[o.id,0]));
+          const rankSum = Object.fromEntries(opts.map(o=>[o.id,0]));
+          const rankCount = Object.fromEntries(opts.map(o=>[o.id,0]));
+          let voters = 0;
+          responses.forEach(r => { const order=r.answers?.[q.id]; if(!Array.isArray(order)||!order.length) return; voters++;
+            order.forEach((oid,i)=>{ if(oid in points){ points[oid]+=(N-i); rankSum[oid]+=(i+1); rankCount[oid]++; } }); });
+          const maxPoints = Math.max(1, ...opts.map(o=>points[o.id]));
+          const sorted = [...opts].sort((a,b)=>points[b.id]-points[a.id]);
+          const bars = sorted.map(o => { const w=Math.round(points[o.id]/maxPoints*100);
+            const avg = rankCount[o.id] ? (rankSum[o.id]/rankCount[o.id]).toFixed(1) : "—";
+            return `<div class="muted">${esc(o.label)}<span style="float:right">avg #${avg}</span></div>
+              <div class="bar"><span style="width:${w}%"></span><em><span>${points[o.id]} pts</span><span>${rankCount[o.id]}</span></em></div>`; }).join("");
+          return `<div class="card" style="margin:.7rem 0"><h3>${esc(q.title)}</h3>
+            <p class="muted" style="font-size:.82rem">Ranked by ${voters} ${voters===1?"person":"people"} · Borda points; “avg #” = average position</p>${bars}</div>`;
+        }
+        const opts = q.options || [];
+        const counts = Object.fromEntries(opts.map(o=>[o.id,0]));
+        let answered = 0;
+        responses.forEach(r => { const a=r.answers?.[q.id]; if(a==null) return; answered++;
+          (Array.isArray(a)?a:[a]).forEach(v=>{ if(v in counts) counts[v]++; }); });
+        const bars = opts.map(o => { const c=counts[o.id], pc=pct(c,answered);
+          return `<div class="muted">${esc(o.label)}</div>
+            <div class="bar"><span style="width:${pc}%"></span><em><span>${pc}%</span><span>${c}</span></em></div>`; }).join("");
+        return `<div class="card" style="margin:.7rem 0"><h3>${esc(q.title)}</h3>${bars}</div>`;
+      }).join("");
+
+      body.innerHTML = html;
+      const csvBtn = body.querySelector("#csv-btn");
+      if (csvBtn) csvBtn.onclick = () => downloadCsv(p, responses, detailMap);
+    }
+
+    function downloadCsv(p, responses, detailMap){
+      const qs = p.questions || [];
+      // Build the columns. A ranking question expands into ONE points column per
+      // option — Borda points: 1st choice = N pts, 2nd = N-1, … last = 1, unranked = 0.
+      // SUM each of those columns in Excel to get the total points for that option.
+      const cols = [{ head: "submitted_at", val: (r) => fmt(toDate(r.createdAt)) }];
+      for (const q of qs) {
+        if (q.type === "rank") {
+          const opts = q.options || [];
+          const N = opts.length;
+          opts.forEach(o => cols.push({
+            head: `${q.title} — ${o.label} (pts)`,
+            val: (r, m) => {
+              const order = m[q.id];
+              if (!Array.isArray(order)) return "";
+              const idx = order.indexOf(o.id);
+              return idx === -1 ? 0 : (N - idx);
+            }
+          }));
+        } else if (TEXT_TYPES.includes(q.type)) {
+          cols.push({ head: q.title, val: (r, m) => m[q.id] ?? "" });
+        } else {
+          cols.push({ head: q.title, val: (r, m) => {
+            const v = m[q.id];
+            const ids = Array.isArray(v) ? v : (v == null ? [] : [v]);
+            return ids.map(id => (q.options.find(o => o.id === id)?.label) ?? id).join("; ");
+          }});
+        }
+      }
+      const rows = responses.map(r => {
+        const m = { ...(r.answers || {}), ...((detailMap[r.id]) || {}) };
+        return cols.map(c => c.val(r, m));
+      });
+      const csv = [cols.map(c => c.head), ...rows].map(row =>
+        row.map(c => `"${String(c ?? "").replace(/"/g,'""')}"`).join(",")).join("\r\n");
+      const blob = new Blob([csv], { type:"text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(p.title||"poll").replace(/[^a-z0-9]+/gi,"_")}_results.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // ---------- embed code ----------
+    function showEmbed(id, p){
+      const origin = location.origin;
+      const pollUrl = `${origin}/poll.html?id=${id}`;
+      const frameId = `pollx-${id}`;
+      const iframe =
+`<iframe src="${pollUrl}" title="${esc(p.title||"Poll")}" id="${frameId}"
+  style="width:100%;border:0;min-height:620px"></iframe>
+<script>
+window.addEventListener("message",function(e){
+  if(e.data&&e.data.pollId==="${id}"&&e.data.pollxHeight){
+    var f=document.getElementById("${frameId}");
+    if(f)f.style.height=e.data.pollxHeight+"px";
+  }
+});
+<\/script>`;
+      const fullpage =
+`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(p.title||"Poll")}</title>
+</head>
+<body style="margin:0;padding:16px;font-family:system-ui,-apple-system,Segoe UI,sans-serif">
+<div id="${frameId}"></div>
+<script type="module">
+import { renderPoll } from "${origin}/assets/poll-widget.js?v=2";
+renderPoll(document.getElementById("${frameId}"), "${id}");
+<\/script>
+</body>
+</html>`;
+      const snippet =
+`<div id="${frameId}"></div>
+<script type="module">
+  import { renderPoll } from "${origin}/assets/poll-widget.js?v=2";
+  renderPoll(document.getElementById("${frameId}"), "${id}");
+<\/script>`;
+
+      $("#embed-body").innerHTML = `
+        <label class="field"><span>Direct link to the poll</span>
+          <input type="text" readonly value="${esc(pollUrl)}" onclick="this.select()"></label>
+
+        <h3 style="margin-top:1rem">Option 1 — iframe (works on WordPress &amp; Wix)</h3>
+        <p class="muted" style="font-size:.88rem">Paste into a Custom HTML / Embed block. Auto-resizes to fit.</p>
+        <code class="codebox">${esc(iframe)}</code>
+        <button class="btn sm" data-copy="iframe">Copy iframe code</button>
+
+        <h3 style="margin-top:1.5rem">Option 2 — full HTML page (best for Wix)</h3>
+        <p class="muted" style="font-size:.88rem">In Wix: <b>Add → Embed → Embed HTML → Code</b>, paste this whole page. (Also works hosted anywhere, or in an iframe.)</p>
+        <code class="codebox">${esc(fullpage)}</code>
+        <button class="btn sm" data-copy="fullpage">Copy full HTML page</button>
+
+        <h3 style="margin-top:1.5rem">Option 3 — inline widget (advanced)</h3>
+        <p class="muted" style="font-size:.88rem">Renders directly in the page for blocks that allow module scripts.</p>
+        <code class="codebox">${esc(snippet)}</code>
+        <button class="btn sm" data-copy="snippet">Copy widget code</button>
+
+        <p class="muted" style="font-size:.82rem;margin-top:1rem">
+          All options load the poll from <code>${esc(origin)}</code>, so keep this app deployed.
+        </p>`;
+      const map = { iframe, fullpage, snippet };
+      $("#embed-body").querySelectorAll("[data-copy]").forEach(btn =>
+        btn.onclick = () => copy(map[btn.dataset.copy], btn));
+      $("#embed-dlg").showModal();
+    }
+    async function copy(text, btn){
+      try { await navigator.clipboard.writeText(text); const t=btn.textContent; btn.textContent="Copied!"; setTimeout(()=>btn.textContent=t,1500); }
+      catch { prompt("Copy this:", text); }
+    }
+
+    renderQuestions();
+  </script>
 </body>
 </html>
