@@ -10,8 +10,8 @@
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1a1a;background:var(--bg);line-height:1.5}
     a{color:var(--brand)}
     .wrap{max-width:920px;margin:0 auto;padding:1.25rem}
-    header.bar{background:#fff;border-bottom:1px solid var(--line);position:fixed;top:0;left:0;right:0;z-index:30;box-shadow:0 2px 10px rgba(20,22,40,.06)}
-    header.bar .wrap{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:nowrap;padding-top:.85rem;padding-bottom:.85rem}
+    header.topbar{background:#fff;border-bottom:1px solid var(--line);position:fixed;top:0;left:0;right:0;z-index:30;box-shadow:0 2px 10px rgba(20,22,40,.06)}
+    header.topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:nowrap;padding-top:.85rem;padding-bottom:.85rem}
     header .row{flex-wrap:nowrap}
     header .brand{font-weight:700;font-size:1.15rem;white-space:nowrap}
     header #who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42vw}
@@ -94,7 +94,7 @@
 
   <!-- ===================== APP ===================== -->
   <div id="app-view" class="hide">
-    <header class="bar">
+    <header class="topbar">
       <div class="wrap">
         <span class="brand">📊 Polls Admin</span>
         <span class="row">
