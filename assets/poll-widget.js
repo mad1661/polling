@@ -18,7 +18,7 @@
 import { db, auth } from "./firebase-config.js";
 import {
   doc, getDoc, getDocs, setDoc, collection, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-lite.js";
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 const VOTE_TYPES = ["single", "multiple", "rank"];
@@ -86,6 +86,12 @@ export async function renderPoll(root, pollId) {
 
   if (!pollId) { root.innerHTML = notice("No poll id was provided.", "err"); return; }
 
+  // Start anonymous sign-in immediately, in parallel with loading the poll, so
+  // there's no extra round-trip before the form is ready to submit.
+  const authPromise = auth.currentUser
+    ? Promise.resolve(auth.currentUser)
+    : signInAnonymously(auth).then(c => c.user).catch(() => null);
+
   let snap;
   try {
     snap = await getDoc(doc(db, "polls", pollId));
@@ -102,14 +108,10 @@ export async function renderPoll(root, pollId) {
   const now = new Date();
   const isOpen = !closesAt || now < closesAt;
 
-  // Sign in anonymously so the user can vote/comment (one vote per anon user).
-  // If an admin is already signed in (same browser), keep their session.
-  let uid = auth.currentUser?.uid ?? null;
+  // Anonymous sign-in was kicked off above; await its result here.
+  const authedUser = await authPromise;
+  let uid = authedUser?.uid ?? null;
   let authReady = !!uid;
-  if (!uid) {
-    try { const cred = await signInAnonymously(auth); uid = cred.user.uid; authReady = true; }
-    catch (e) { authReady = false; } // anonymous auth not enabled — voting disabled
-  }
 
   const votedKey = `pollx_voted_${pollId}`;
   let alreadyVoted = localStorage.getItem(votedKey) === "1";

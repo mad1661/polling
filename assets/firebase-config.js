@@ -4,7 +4,7 @@
 // Everything loads from the gstatic CDN so the files work as plain static
 // HTML — no build step — which is what lets the widget run on WordPress / Wix.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-lite.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 export const firebaseConfig = {
