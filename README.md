@@ -61,6 +61,44 @@ This publishes:
 
 ---
 
+## Auto-deploy on merge (GitHub Actions)
+
+`.github/workflows/firebase-hosting-deploy.yml` redeploys the **website** to the
+live channel automatically whenever changes land on `main` (e.g. when a PR is
+merged). It needs **one** repository secret holding a Google service-account key.
+
+**1. Create a service account key with hosting permission**
+
+Easiest (does everything for you, incl. creating the secret):
+```bash
+firebase init hosting:github
+```
+Point it at `mad1661/polling`. It creates a correctly-scoped service account,
+stores the key as a repo secret, and may add its own workflow file (you can delete
+that one — this repo already has `firebase-hosting-deploy.yml`).
+
+Or do it manually:
+- **Google Cloud Console → IAM & Admin → Service Accounts → Create service account**
+  (e.g. `github-deploy`), grant it the **Firebase Hosting Admin** role, then
+  **Keys → Add key → Create new key → JSON** and download it.
+
+**2. Add it as a GitHub secret**
+
+Repo **Settings → Secrets and variables → Actions → New repository secret**:
+- **Name:** `FIREBASE_SERVICE_ACCOUNT_POLLING_D51EE`
+- **Value:** the entire contents of the downloaded JSON file
+
+That's it — add the secret **before** merging, then every merge to `main` publishes
+to `https://polling-d51ee.web.app`. You can also run it on demand from the
+**Actions** tab (“Run workflow”).
+
+> This workflow deploys **hosting only** (that's what auto-deploy on merge needs).
+> `firestore.rules` is deployed once during setup; redeploy it with
+> `firebase deploy --only firestore:rules` if you ever change it (or run that in
+> the workflow if your service account also has the *Firebase Rules Admin* role).
+
+---
+
 ## Using it
 
 1. Go to **`https://polling-d51ee.web.app`** and sign in with an admin account.
