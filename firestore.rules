@@ -1,0 +1,71 @@
+rules_version = '2';
+
+// Security model
+// --------------
+// * polls/{id}                  -> the form configuration (public to read so the
+//                                  embedded widget can render it; only admins write)
+// * polls/{id}/responses/{uid}  -> one vote document per user (uid = doc id)
+// * polls/{id}/comments/{id}    -> the comment section
+//
+// "Admin" = anyone signed in with a REAL account (email/password, Google, ...).
+// Public voters sign in anonymously, so we tell them apart by the sign-in
+// provider. Any admin can read every result of every poll at any time
+// ("universal" access). The public can only read raw votes AFTER the poll's
+// revealAt time — this is what makes the reveal genuinely secret rather than
+// just hidden in the page.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // A trusted admin is any authenticated, non-anonymous user.
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function pollData(pollId) {
+      return get(/databases/$(database)/documents/polls/$(pollId)).data;
+    }
+
+    match /polls/{pollId} {
+      // The form config has no results in it, so it is safe to read publicly.
+      allow read: if true;
+      // Only logged-in admins create / edit / delete polls.
+      allow create, update, delete: if isAdmin();
+
+      // ---- Raw votes -------------------------------------------------------
+      match /responses/{responseId} {
+        // Admins: always. Public: only once the reveal time has passed.
+        // A voter may always read back their own submission.
+        allow read: if isAdmin()
+          || request.time >= pollData(pollId).revealAt
+          || (isSignedIn() && request.auth.uid == responseId);
+
+        // Anyone signed in (including anonymous) may vote ONCE while the poll
+        // is open. Forcing the doc id to equal the uid enforces one-vote-per-user.
+        allow create: if isSignedIn()
+          && responseId == request.auth.uid
+          && request.time < pollData(pollId).closesAt;
+
+        // Votes are immutable. Admins may delete (e.g. clean up spam / testing).
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+
+      // ---- Comments --------------------------------------------------------
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn()
+          && request.time < pollData(pollId).closesAt
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+  }
+}
