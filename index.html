@@ -560,7 +560,7 @@ window.addEventListener("message",function(e){
 <body style="margin:0;padding:16px;font-family:system-ui,-apple-system,Segoe UI,sans-serif">
 <div id="${frameId}"></div>
 <script type="module">
-import { renderPoll } from "${origin}/assets/poll-widget.js";
+import { renderPoll } from "${origin}/assets/poll-widget.js?v=2";
 renderPoll(document.getElementById("${frameId}"), "${id}");
 <\/script>
 </body>
@@ -568,7 +568,7 @@ renderPoll(document.getElementById("${frameId}"), "${id}");
       const snippet =
 `<div id="${frameId}"></div>
 <script type="module">
-  import { renderPoll } from "${origin}/assets/poll-widget.js";
+  import { renderPoll } from "${origin}/assets/poll-widget.js?v=2";
   renderPoll(document.getElementById("${frameId}"), "${id}");
 <\/script>`;
 
