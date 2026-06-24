@@ -1,18 +1,28 @@
 // Public poll widget
 // -------------------
 // renderPoll(container, pollId) draws a poll's questions + comment box into a
-// container element, accepts a submission, and reveals results according to the
-// poll's revealAt / closesAt timestamps. It is used by poll.html and by the
-// copy-paste embed snippet the admin console generates.
+// container, accepts a submission, and reveals results per the poll's
+// revealAt / closesAt timestamps. Used by poll.html and the embed snippets.
 //
-// The reveal rules are ALSO enforced server-side in firestore.rules — the JS
-// here just reflects them. If results aren't readable yet, Firestore denies the
-// read and we show the "results hidden" notice.
+// Question types:
+//   single   - multiple choice, pick one      (aggregated, public after reveal)
+//   multiple - checkboxes, pick many           (aggregated, public after reveal)
+//   rank     - click options in preferred order (aggregated, public after reveal)
+//   short    - one-line text (name, member #…)  (PRIVATE: admin-only)
+//   text     - long free text                   (PRIVATE: admin-only)
+//
+// Vote-type answers go to polls/{id}/responses/{uid} (publicly readable only
+// after revealAt, for tallying). Text answers go to polls/{id}/details/{uid},
+// which is NEVER public — only admins (and the author) can read it. That keeps
+// names / member numbers out of the public results.
 import { db, auth } from "./firebase-config.js";
 import {
-  doc, getDoc, getDocs, setDoc, addDoc, collection, query, orderBy, serverTimestamp
+  doc, getDoc, getDocs, setDoc, collection, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+const VOTE_TYPES = ["single", "multiple", "rank"];
+const TEXT_TYPES = ["short", "text"];
 
 // ---------- small helpers ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
@@ -36,11 +46,17 @@ function injectStyles() {
   .pollx .pollx-desc{color:#555;margin:0 0 1.25rem}
   .pollx .pollx-q{background:#fff;border:1px solid #e6e6e6;border-radius:12px;padding:1rem 1.15rem;margin:0 0 1rem}
   .pollx .pollx-q h3{margin:0 0 .6rem;font-size:1.05rem}
-  .pollx label.pollx-opt{display:flex;align-items:center;gap:.6rem;padding:.55rem .65rem;border:1px solid #e6e6e6;border-radius:9px;margin:.4rem 0;cursor:pointer;transition:border-color .15s,background .15s}
-  .pollx label.pollx-opt:hover{border-color:#9db4ff;background:#f6f8ff}
+  .pollx .pollx-req{color:#c0392b}
+  .pollx .pollx-hint{font-size:.85rem;color:#666;margin:.1rem 0 .6rem}
+  .pollx label.pollx-opt,.pollx .pollx-opt{display:flex;align-items:center;gap:.6rem;padding:.55rem .65rem;border:1px solid #e6e6e6;border-radius:9px;margin:.4rem 0;cursor:pointer;transition:border-color .15s,background .15s}
+  .pollx label.pollx-opt:hover,.pollx .pollx-opt:hover{border-color:#9db4ff;background:#f6f8ff}
   .pollx input[type=radio],.pollx input[type=checkbox]{width:18px;height:18px;accent-color:#3b5bdb;flex:0 0 auto}
   .pollx textarea,.pollx input[type=text]{width:100%;padding:.6rem .7rem;border:1px solid #d8d8d8;border-radius:9px;font:inherit;resize:vertical}
   .pollx textarea:focus,.pollx input[type=text]:focus{outline:none;border-color:#3b5bdb;box-shadow:0 0 0 3px rgba(59,91,219,.15)}
+  .pollx .pollx-rankopt{user-select:none}
+  .pollx .pollx-rankopt.selected{border-color:#3b5bdb;background:#eef2ff}
+  .pollx .pollx-rankbadge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:2px solid #c9d2f0;color:#3b5bdb;font-weight:700;font-size:.8rem;flex:0 0 auto}
+  .pollx .pollx-rankopt.selected .pollx-rankbadge{background:#3b5bdb;color:#fff;border-color:#3b5bdb}
   .pollx .pollx-btn{display:inline-block;background:#3b5bdb;color:#fff;border:0;border-radius:9px;padding:.65rem 1.2rem;font:inherit;font-weight:600;cursor:pointer}
   .pollx .pollx-btn:hover{background:#2f49b3}
   .pollx .pollx-btn:disabled{opacity:.55;cursor:not-allowed}
@@ -49,16 +65,17 @@ function injectStyles() {
   .pollx .pollx-ok{background:#f0fbf4;border:1px solid #c6efd3;color:#0b6b32}
   .pollx .pollx-bar{position:relative;background:#eef0f4;border-radius:8px;height:34px;margin:.45rem 0;overflow:hidden}
   .pollx .pollx-bar > span{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#5878f0,#3b5bdb);border-radius:8px;transition:width .5s ease}
-  .pollx .pollx-bar > em{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 .7rem;font-style:normal;font-size:.9rem;font-weight:600;color:#1a1a1a;mix-blend-mode:normal}
+  .pollx .pollx-bar > em{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 .7rem;font-style:normal;font-size:.9rem;font-weight:600;color:#1a1a1a}
   .pollx .pollx-section-title{font-size:1.15rem;margin:1.75rem 0 .75rem;padding-top:1.25rem;border-top:1px solid #ececec}
   .pollx .pollx-comment{border:1px solid #eee;border-radius:10px;padding:.65rem .8rem;margin:.5rem 0}
   .pollx .pollx-comment .pollx-cmeta{font-size:.8rem;color:#888;margin-bottom:.2rem}
   .pollx .pollx-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-start}
   .pollx .pollx-row input[type=text]{flex:1;min-width:160px}
-  .pollx .pollx-muted{color:#888;font-size:.9rem}
-  .pollx .pollx-textans{background:#f7f8fa;border-radius:8px;padding:.5rem .7rem;margin:.4rem 0}`;
+  .pollx .pollx-muted{color:#888;font-size:.9rem}`;
   document.head.appendChild(style);
 }
+
+const reqMark = (q) => q.required ? ` <span class="pollx-req" title="required">*</span>` : "";
 
 // ---------- main entry ----------
 export async function renderPoll(root, pollId) {
@@ -93,9 +110,20 @@ export async function renderPoll(root, pollId) {
     catch (e) { authReady = false; } // anonymous auth not enabled — voting disabled
   }
 
-  // Did this browser already vote? (instant UX; the server rule is the real guard)
   const votedKey = `pollx_voted_${pollId}`;
   let alreadyVoted = localStorage.getItem(votedKey) === "1";
+
+  // Ranking-question state: qid -> ordered array of chosen option ids.
+  const rankState = {};
+  function paintRank(container, qid) {
+    const arr = rankState[qid] || [];
+    container.querySelectorAll("[data-rank-opt]").forEach((el) => {
+      const pos = arr.indexOf(el.dataset.rankOpt);
+      const badge = el.querySelector(".pollx-rankbadge");
+      if (pos === -1) { el.classList.remove("selected"); badge.textContent = ""; }
+      else { el.classList.add("selected"); badge.textContent = String(pos + 1); }
+    });
+  }
 
   render();
 
@@ -105,11 +133,9 @@ export async function renderPoll(root, pollId) {
       ${poll.description ? `<p class="pollx-desc">${esc(poll.description)}</p>` : ""}
       <div id="pollx-body"></div>
       <div id="pollx-results"></div>
-      ${poll.allowComments ? `<div id="pollx-comments"></div>` : ""}
     `;
     renderBody();
     renderResults();
-    if (poll.allowComments) renderComments();
   }
 
   // ----- voting form / status -----
@@ -139,13 +165,40 @@ export async function renderPoll(root, pollId) {
         <span id="pollx-form-msg" class="pollx-muted"></span>
       </form>`;
     body.querySelector("#pollx-form").addEventListener("submit", onSubmit);
+
+    // Wire up ranking questions (click options in order of preference).
+    body.querySelectorAll("[data-rank-q]").forEach((container) => {
+      const qid = container.dataset.rankQ;
+      const pick = (el) => {
+        const oid = el?.dataset.rankOpt; if (!oid) return;
+        const arr = rankState[qid] || (rankState[qid] = []);
+        const i = arr.indexOf(oid);
+        if (i === -1) arr.push(oid); else arr.splice(i, 1);
+        paintRank(container, qid);
+      };
+      container.addEventListener("click", (e) => pick(e.target.closest("[data-rank-opt]")));
+      container.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(e.target.closest("[data-rank-opt]")); }
+      });
+      paintRank(container, qid);
+    });
   }
 
   function renderQuestionInput(q) {
     const opts = Array.isArray(q.options) ? q.options : [];
     let inner = "";
-    if (q.type === "text") {
+    if (q.type === "short") {
+      inner = `<input type="text" name="${esc(q.id)}" placeholder="Your answer…" maxlength="200">`;
+    } else if (q.type === "text") {
       inner = `<textarea name="${esc(q.id)}" rows="3" placeholder="Your answer…"></textarea>`;
+    } else if (q.type === "rank") {
+      inner = `<p class="pollx-hint">Click options in your order of preference — 1 = most preferred. Click again to remove.</p>
+        <div class="pollx-rank" data-rank-q="${esc(q.id)}">
+          ${opts.map((o) => `
+          <div class="pollx-opt pollx-rankopt" data-rank-opt="${esc(o.id)}" role="button" tabindex="0">
+            <span class="pollx-rankbadge"></span><span>${esc(o.label)}</span>
+          </div>`).join("")}
+        </div>`;
     } else {
       const inputType = q.type === "multiple" ? "checkbox" : "radio";
       inner = opts.map((o) => `
@@ -154,7 +207,7 @@ export async function renderPoll(root, pollId) {
           <span>${esc(o.label)}</span>
         </label>`).join("");
     }
-    return `<div class="pollx-q"><h3>${esc(q.title)}</h3>${inner}</div>`;
+    return `<div class="pollx-q"><h3>${esc(q.title)}${reqMark(q)}</h3>${inner}</div>`;
   }
 
   async function onSubmit(e) {
@@ -162,20 +215,32 @@ export async function renderPoll(root, pollId) {
     const form = e.currentTarget;
     const msg = form.querySelector("#pollx-form-msg");
     const btn = form.querySelector("button");
-    const answers = {};
+
+    const votes = {};    // single / multiple / rank  -> responses doc
+    const details = {};  // short / text              -> admin-only details doc
     for (const q of questions) {
-      if (q.type === "text") {
+      if (q.type === "short" || q.type === "text") {
         const v = (form.elements[q.id]?.value || "").trim();
-        if (v) answers[q.id] = v.slice(0, 2000);
+        if (v) details[q.id] = v.slice(0, q.type === "short" ? 200 : 2000);
+      } else if (q.type === "rank") {
+        const arr = rankState[q.id] || [];
+        if (arr.length) votes[q.id] = arr.slice();
       } else if (q.type === "multiple") {
         const checked = [...form.querySelectorAll(`input[name="${cssEscape(q.id)}"]:checked`)].map(i => i.value);
-        if (checked.length) answers[q.id] = checked;
+        if (checked.length) votes[q.id] = checked;
       } else {
         const picked = form.querySelector(`input[name="${cssEscape(q.id)}"]:checked`);
-        if (picked) answers[q.id] = picked.value;
+        if (picked) votes[q.id] = picked.value;
       }
     }
-    if (Object.keys(answers).length === 0) {
+
+    const answered = new Set([...Object.keys(votes), ...Object.keys(details)]);
+    const missing = questions.filter(q => q.required && !answered.has(q.id));
+    if (missing.length) {
+      msg.textContent = `Please answer: ${missing.map(q => q.title).join(", ")}`;
+      return;
+    }
+    if (answered.size === 0) {
       msg.textContent = "Please answer at least one question.";
       return;
     }
@@ -183,16 +248,21 @@ export async function renderPoll(root, pollId) {
     btn.disabled = true; msg.textContent = "Submitting…";
     try {
       await setDoc(doc(db, "polls", pollId, "responses", uid), {
-        answers,
+        answers: votes,
         createdAt: serverTimestamp()
       });
+      if (Object.keys(details).length) {
+        await setDoc(doc(db, "polls", pollId, "details", uid), {
+          answers: details,
+          createdAt: serverTimestamp()
+        });
+      }
       localStorage.setItem(votedKey, "1");
       alreadyVoted = true;
       render();
     } catch (err) {
       btn.disabled = false;
       if (String(err?.code).includes("permission-denied")) {
-        // Either the poll just closed, or this user already voted.
         localStorage.setItem(votedKey, "1");
         alreadyVoted = true;
         render();
@@ -202,10 +272,11 @@ export async function renderPoll(root, pollId) {
     }
   }
 
-  // ----- results (reveal-gated) -----
+  // ----- results (reveal-gated; aggregates only, no private text) -----
   async function renderResults() {
     const el = root.querySelector("#pollx-results");
-    if (!questions.length) { el.innerHTML = ""; return; }
+    const voteQs = questions.filter(q => VOTE_TYPES.includes(q.type));
+    if (!voteQs.length) { el.innerHTML = ""; return; }
 
     let responses = null;
     try {
@@ -224,17 +295,40 @@ export async function renderPoll(root, pollId) {
     const total = responses.length;
     el.innerHTML = `<h2 class="pollx-section-title">Results</h2>` +
       `<p class="pollx-muted">${total} ${total === 1 ? "response" : "responses"} so far.</p>` +
-      questions.map(q => renderQuestionResult(q, responses)).join("");
+      voteQs.map(q => renderQuestionResult(q, responses)).join("");
   }
 
   function renderQuestionResult(q, responses) {
-    if (q.type === "text") {
-      const answers = responses.map(r => r.answers?.[q.id]).filter(Boolean);
-      const list = answers.length
-        ? answers.map(a => `<div class="pollx-textans">${esc(a)}</div>`).join("")
-        : `<p class="pollx-muted">No answers yet.</p>`;
-      return `<div class="pollx-q"><h3>${esc(q.title)}</h3>${list}</div>`;
+    if (q.type === "rank") {
+      const opts = Array.isArray(q.options) ? q.options : [];
+      const N = opts.length;
+      const points = Object.fromEntries(opts.map(o => [o.id, 0]));
+      const rankSum = Object.fromEntries(opts.map(o => [o.id, 0]));
+      const rankCount = Object.fromEntries(opts.map(o => [o.id, 0]));
+      let voters = 0;
+      for (const r of responses) {
+        const order = r.answers?.[q.id];
+        if (!Array.isArray(order) || !order.length) continue;
+        voters++;
+        order.forEach((oid, i) => {
+          if (oid in points) { points[oid] += (N - i); rankSum[oid] += (i + 1); rankCount[oid]++; }
+        });
+      }
+      const maxPoints = Math.max(1, ...opts.map(o => points[o.id]));
+      const sorted = [...opts].sort((a, b) => points[b.id] - points[a.id]);
+      const bars = sorted.map(o => {
+        const w = Math.round(points[o.id] / maxPoints * 100);
+        const avg = rankCount[o.id] ? (rankSum[o.id] / rankCount[o.id]).toFixed(1) : "—";
+        return `<div>
+          <div class="pollx-muted">${esc(o.label)}<span style="float:right">avg #${avg}</span></div>
+          <div class="pollx-bar"><span style="width:${w}%"></span><em><span>${points[o.id]} pts</span><span>${rankCount[o.id]}</span></em></div>
+        </div>`;
+      }).join("");
+      return `<div class="pollx-q"><h3>${esc(q.title)}</h3>
+        <p class="pollx-hint">Ranked by ${voters} ${voters === 1 ? "person" : "people"} · sorted by preference (points = Borda count; “avg #” = average position)</p>
+        ${bars}</div>`;
     }
+
     const opts = Array.isArray(q.options) ? q.options : [];
     const counts = Object.fromEntries(opts.map(o => [o.id, 0]));
     let answered = 0;
@@ -257,71 +351,6 @@ export async function renderPoll(root, pollId) {
     return `<div class="pollx-q"><h3>${esc(q.title)}</h3>${bars}</div>`;
   }
 
-  // ----- comments -----
-  async function renderComments() {
-    const el = root.querySelector("#pollx-comments");
-    el.innerHTML = `<h2 class="pollx-section-title">Comments</h2><div id="pollx-clist"><p class="pollx-muted">Loading…</p></div>`;
-
-    if (isOpen && authReady) {
-      el.insertAdjacentHTML("beforeend", `
-        <form id="pollx-cform" style="margin-top:.75rem">
-          <div class="pollx-row">
-            <input type="text" id="pollx-cname" placeholder="Name (optional)" maxlength="60">
-          </div>
-          <textarea id="pollx-ctext" rows="2" placeholder="Add a comment…" maxlength="2000" style="margin-top:.5rem"></textarea>
-          <div style="margin-top:.5rem"><button class="pollx-btn" type="submit">Post comment</button>
-            <span id="pollx-cmsg" class="pollx-muted"></span></div>
-        </form>`);
-      el.querySelector("#pollx-cform").addEventListener("submit", onComment);
-    } else if (!isOpen) {
-      el.insertAdjacentHTML("beforeend", `<p class="pollx-muted" style="margin-top:.5rem">Commenting is closed.</p>`);
-    }
-
-    await loadComments();
-  }
-
-  async function loadComments() {
-    const list = root.querySelector("#pollx-clist");
-    if (!list) return;
-    try {
-      const q = query(collection(db, "polls", pollId, "comments"), orderBy("createdAt", "desc"));
-      const cs = await getDocs(q);
-      if (cs.empty) { list.innerHTML = `<p class="pollx-muted">No comments yet. Be the first!</p>`; return; }
-      list.innerHTML = cs.docs.map(d => {
-        const c = d.data();
-        return `<div class="pollx-comment">
-          <div class="pollx-cmeta">${esc(c.name || "Anonymous")} · ${fmt(toDate(c.createdAt) || now)}</div>
-          <div>${esc(c.text)}</div></div>`;
-      }).join("");
-    } catch (e) {
-      list.innerHTML = notice("Could not load comments.", "err");
-    }
-  }
-
-  async function onComment(e) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const name = form.querySelector("#pollx-cname").value.trim().slice(0, 60);
-    const text = form.querySelector("#pollx-ctext").value.trim();
-    const msg = form.querySelector("#pollx-cmsg");
-    if (!text) { msg.textContent = "Please write something first."; return; }
-    const btn = form.querySelector("button");
-    btn.disabled = true; msg.textContent = "Posting…";
-    try {
-      await addDoc(collection(db, "polls", pollId, "comments"), {
-        name: name || "Anonymous",
-        text: text.slice(0, 2000),
-        createdAt: serverTimestamp()
-      });
-      form.querySelector("#pollx-ctext").value = "";
-      msg.textContent = "";
-      btn.disabled = false;
-      await loadComments();
-    } catch (err) {
-      btn.disabled = false;
-      msg.textContent = "Could not post your comment.";
-    }
-  }
 }
 
 function notice(text, kind) {
@@ -330,8 +359,6 @@ function notice(text, kind) {
   return `<div class="${cls}">${esc(text)}</div>`;
 }
 
-// CSS.escape isn't available everywhere for attribute selectors; ids we make are
-// uuid-safe, but guard anyway.
 function cssEscape(s) {
   return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&");
 }

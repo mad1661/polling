@@ -4,8 +4,8 @@ rules_version = '2';
 // --------------
 // * polls/{id}                  -> the form configuration (public to read so the
 //                                  embedded widget can render it; only admins write)
-// * polls/{id}/responses/{uid}  -> one vote document per user (uid = doc id)
-// * polls/{id}/comments/{id}    -> the comment section
+// * polls/{id}/responses/{uid}  -> one vote document per user (choice/ranking only)
+// * polls/{id}/details/{uid}    -> private text answers (name, member #, …); admin-only
 //
 // "Admin" = anyone signed in with a REAL account (email/password, Google, ...).
 // Public voters sign in anonymously, so we tell them apart by the sign-in
@@ -55,14 +55,14 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
-      // ---- Comments --------------------------------------------------------
-      match /comments/{commentId} {
-        allow read: if true;
+      // ---- Private per-respondent details (name, member #, free text) ------
+      // NEVER public: only an admin (or the author of the doc) may read it.
+      // This keeps identifying info out of the publicly-revealed results.
+      match /details/{responseId} {
+        allow read: if isAdmin() || (isSignedIn() && request.auth.uid == responseId);
         allow create: if isSignedIn()
-          && request.time < pollData(pollId).closesAt
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000;
+          && responseId == request.auth.uid
+          && request.time < pollData(pollId).closesAt;
         allow update: if false;
         allow delete: if isAdmin();
       }
