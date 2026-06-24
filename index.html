@@ -67,6 +67,10 @@
     .bar>em{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 .7rem;font-style:normal;font-weight:600;font-size:.88rem}
     .hide{display:none!important}
     .center{max-width:420px;margin:8vh auto 0}
+    .tabs{display:flex;gap:.25rem;margin:0 0 1.25rem;border-bottom:1px solid var(--line)}
+    .tab{background:none;border:0;border-bottom:2px solid transparent;padding:.6rem 1rem;margin-bottom:-1px;font:inherit;font-size:1rem;font-weight:600;color:var(--muted);cursor:pointer}
+    .tab:hover{color:#1a1a1a}
+    .tab.active{color:var(--brand);border-bottom-color:var(--brand)}
   </style>
 </head>
 <body>
@@ -105,7 +109,13 @@
     </header>
 
     <div class="wrap">
-      <!-- Builder -->
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="polls">Polls</button>
+        <button type="button" class="tab" data-tab="create">Create Polls</button>
+      </div>
+
+      <!-- Create Polls tab -->
+      <div id="tab-create" class="tab-panel hide">
       <div class="card">
         <h2 id="builder-title">Create a new poll</h2>
         <form id="poll-form">
@@ -159,8 +169,10 @@
           <div id="form-msg" class="msg hide"></div>
         </form>
       </div>
+      </div><!-- /tab-create -->
 
-      <!-- Polls list -->
+      <!-- Polls tab -->
+      <div id="tab-polls" class="tab-panel">
       <div class="card">
         <div class="row" style="justify-content:space-between">
           <h2 style="margin:0">All polls</h2>
@@ -168,6 +180,7 @@
         </div>
         <div id="polls-list" style="margin-top:.75rem"><p class="muted">Loading…</p></div>
       </div>
+      </div><!-- /tab-polls -->
     </div>
   </div>
 
@@ -212,6 +225,14 @@
     }
     function weeksFromNow(w){ const d=new Date(); d.setDate(d.getDate()+w*7); return d; }
     const typeLabel = (t) => ({single:"Multiple choice",multiple:"Checkboxes",rank:"Ranking",short:"Short text",text:"Long text"}[t] || "Question");
+
+    // ---------- tabs ----------
+    function setTab(name){
+      document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+      $("#tab-polls").classList.toggle("hide", name !== "polls");
+      $("#tab-create").classList.toggle("hide", name !== "create");
+    }
+    document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
 
     // ---------- auth ----------
     onAuthStateChanged(auth, (user) => {
@@ -316,7 +337,7 @@
       $("#cancel-edit").classList.add("hide");
       $("#form-msg").classList.add("hide");
     }
-    $("#cancel-edit").addEventListener("click", resetBuilder);
+    $("#cancel-edit").addEventListener("click", () => { resetBuilder(); setTab("polls"); });
 
     $("#poll-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -354,8 +375,8 @@
         if (editId) await updateDoc(doc(db, "polls", editId), payload);
         else { payload.createdAt = serverTimestamp(); await addDoc(collection(db, "polls"), payload); }
         resetBuilder();
-        showFormMsg("Saved.", "ok");
         await loadPolls();
+        setTab("polls");
       } catch (err) {
         showFormMsg("Could not save: " + (err?.message || err), "err");
       } finally { btn.disabled = false; }
@@ -429,6 +450,7 @@
       $("#builder-title").textContent = "Edit poll";
       $("#save-btn").textContent = "Save changes";
       $("#cancel-edit").classList.remove("hide");
+      setTab("create");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
