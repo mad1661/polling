@@ -113,6 +113,15 @@ export async function renderPoll(root, pollId) {
 
   const votedKey = `pollx_voted_${pollId}`;
   let alreadyVoted = localStorage.getItem(votedKey) === "1";
+  // The server is the source of truth: if an admin deletes this person's vote,
+  // they should see the form again even though localStorage remembered voting.
+  if (uid) {
+    try {
+      const own = await getDoc(doc(db, "polls", pollId, "responses", uid));
+      alreadyVoted = own.exists();
+      if (alreadyVoted) localStorage.setItem(votedKey, "1"); else localStorage.removeItem(votedKey);
+    } catch (e) { /* read not allowed / offline — keep the localStorage hint */ }
+  }
 
   // Ranking-question state: qid -> ordered array of chosen option ids.
   const rankState = {};

@@ -53,6 +53,8 @@
     .pill.hidden{background:#fff4e5;color:#a35b00}.pill.shown{background:#e9f0ff;color:#284bbd}
     .poll-item{border:1px solid var(--line);border-radius:12px;padding:1rem;margin:.7rem 0}
     .poll-item .top{display:flex;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+    .resp-row{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;border:1px solid var(--line);border-radius:9px;padding:.55rem .7rem;margin:.4rem 0}
+    .resp-row > div{min-width:0;overflow-wrap:anywhere}
     .msg{padding:.6rem .8rem;border-radius:9px;margin:.6rem 0;font-size:.92rem}
     .msg.err{background:#fff1f0;border:1px solid #ffccc7;color:#a8071a}
     .msg.ok{background:#f0fbf4;border:1px solid #c6efd3;color:#0b6b32}
@@ -527,9 +529,49 @@
         return `<div class="card" style="margin:.7rem 0"><h3>${esc(q.title)}</h3>${bars}</div>`;
       }).join("");
 
+      // Individual responses — for removing test or improper votes. Deleting a
+      // vote also lets that person vote again (the widget re-checks the server).
+      html += `<h3 style="margin-top:1.25rem">Individual responses (${total})</h3>`;
+      if (!total) {
+        html += `<p class="muted">No responses yet.</p>`;
+      } else {
+        html += responses.map(r => {
+          const d = detailMap[r.id] || {};
+          const parts = qs.map(q => {
+            if (TEXT_TYPES.includes(q.type)) { const v = d[q.id]; return v ? `<b>${esc(q.title)}:</b> ${esc(v)}` : null; }
+            if (q.type === "rank") {
+              const order = r.answers?.[q.id];
+              if (!Array.isArray(order) || !order.length) return null;
+              return `<b>${esc(q.title)}:</b> ${order.map(oid => esc((q.options.find(o=>o.id===oid)?.label) ?? oid)).join(" › ")}`;
+            }
+            const a = r.answers?.[q.id];
+            if (a == null) return null;
+            const ids = Array.isArray(a) ? a : [a];
+            return `<b>${esc(q.title)}:</b> ${ids.map(idv => esc((q.options.find(o=>o.id===idv)?.label) ?? idv)).join(", ")}`;
+          }).filter(Boolean);
+          return `<div class="resp-row">
+            <div>
+              <div class="muted" style="font-size:.8rem">${fmt(toDate(r.createdAt))}</div>
+              ${parts.length ? parts.map(p2 => `<div style="font-size:.9rem">${p2}</div>`).join("") : `<div class="muted" style="font-size:.9rem">(no answers)</div>`}
+            </div>
+            <button class="btn danger sm" data-del-resp="${esc(r.id)}">Delete vote</button>
+          </div>`;
+        }).join("");
+      }
+
       body.innerHTML = html;
       const csvBtn = body.querySelector("#csv-btn");
       if (csvBtn) csvBtn.onclick = () => downloadCsv(p, responses, detailMap);
+      body.querySelectorAll("[data-del-resp]").forEach(b => b.onclick = async () => {
+        if (!confirm("Delete this vote? It is removed permanently, and that person will be able to vote again.")) return;
+        b.disabled = true;
+        const rid = b.dataset.delResp;
+        try {
+          await deleteDoc(doc(db, "polls", id, "responses", rid));
+          await deleteDoc(doc(db, "polls", id, "details", rid));
+        } catch (e) { alert("Could not delete: " + (e?.message || e)); b.disabled = false; return; }
+        viewResults(id, p);
+      });
     }
 
     function downloadCsv(p, responses, detailMap){
