@@ -206,7 +206,7 @@
       signInWithEmailAndPassword, signOut, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
     import {
-      collection, doc, addDoc, updateDoc, deleteDoc, getDocs,
+      collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs,
       query, orderBy, serverTimestamp, Timestamp
     } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
@@ -487,6 +487,15 @@
       } catch (e) { /* none */ }
       const detailMap = Object.fromEntries(details.map(d => [d.id, d.answers || {}]));
 
+      let deleted = [];
+      try {
+        const dl = await getDocs(query(collection(db, "polls", id, "deleted"), orderBy("deletedAt", "desc")));
+        deleted = dl.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) {
+        try { const dl2 = await getDocs(collection(db, "polls", id, "deleted")); deleted = dl2.docs.map(d => ({ id: d.id, ...d.data() })); }
+        catch (e2) { /* none, or rules not updated yet */ }
+      }
+
       const total = responses.length;
       const qs = p.questions || [];
       let html = `<div class="row" style="justify-content:space-between;align-items:center">
@@ -559,19 +568,66 @@
         }).join("");
       }
 
+      // Deleted votes — audit trail (kept forever, excluded from results above).
+      html += `<h3 style="margin-top:1.25rem">Deleted votes (${deleted.length})</h3>`;
+      if (!deleted.length) {
+        html += `<p class="muted">None.</p>`;
+      } else {
+        html += deleted.map(dv => {
+          const ans = { ...(dv.answers || {}), ...(dv.details || {}) };
+          const parts = qs.map(q => {
+            const v = ans[q.id];
+            if (v == null || v === "") return null;
+            if (q.type === "rank" && Array.isArray(v))
+              return `<b>${esc(q.title)}:</b> ${v.map(oid => esc((q.options.find(o=>o.id===oid)?.label) ?? oid)).join(" › ")}`;
+            if (TEXT_TYPES.includes(q.type)) return `<b>${esc(q.title)}:</b> ${esc(v)}`;
+            const ids = Array.isArray(v) ? v : [v];
+            return `<b>${esc(q.title)}:</b> ${ids.map(idv => esc((q.options.find(o=>o.id===idv)?.label) ?? idv)).join(", ")}`;
+          }).filter(Boolean);
+          return `<div class="resp-row" style="opacity:.85;background:#fafafa">
+            <div>
+              <div class="muted" style="font-size:.8rem">🗑 Deleted by <b>${esc(dv.deletedBy || "unknown")}</b> · ${fmt(toDate(dv.deletedAt))}${dv.originalCreatedAt ? ` · originally voted ${fmt(toDate(dv.originalCreatedAt))}` : ""}</div>
+              ${parts.length ? parts.map(p2 => `<div style="font-size:.9rem">${p2}</div>`).join("") : `<div class="muted" style="font-size:.9rem">(no answers)</div>`}
+            </div>
+          </div>`;
+        }).join("");
+      }
+
       body.innerHTML = html;
       const csvBtn = body.querySelector("#csv-btn");
       if (csvBtn) csvBtn.onclick = () => downloadCsv(p, responses, detailMap);
-      body.querySelectorAll("[data-del-resp]").forEach(b => b.onclick = async () => {
-        if (!confirm("Delete this vote? It is removed permanently, and that person will be able to vote again.")) return;
-        b.disabled = true;
-        const rid = b.dataset.delResp;
-        try {
-          await deleteDoc(doc(db, "polls", id, "responses", rid));
-          await deleteDoc(doc(db, "polls", id, "details", rid));
-        } catch (e) { alert("Could not delete: " + (e?.message || e)); b.disabled = false; return; }
-        viewResults(id, p);
-      });
+      body.querySelectorAll("[data-del-resp]").forEach(b =>
+        b.onclick = () => softDeleteResponse(id, p, b.dataset.delResp, b));
+    }
+
+    // Soft-delete: archive the vote (with who/when) before removing it from the
+    // active responses, so it's preserved for accountability and the person can
+    // vote again. Results read only from `responses`, so archived votes drop out.
+    async function softDeleteResponse(pollId, p, rid, btn) {
+      if (!confirm("Delete this vote?\n\nIt will be archived (kept for accountability, stamped with your name and the time), removed from the results, and that person will be able to vote again.")) return;
+      if (btn) btn.disabled = true;
+      try {
+        const [rsnap, dsnap] = await Promise.all([
+          getDoc(doc(db, "polls", pollId, "responses", rid)),
+          getDoc(doc(db, "polls", pollId, "details", rid))
+        ]);
+        await addDoc(collection(db, "polls", pollId, "deleted"), {
+          originalId: rid,
+          answers: rsnap.exists() ? (rsnap.data().answers || {}) : {},
+          details: dsnap.exists() ? (dsnap.data().answers || {}) : {},
+          originalCreatedAt: rsnap.exists() ? (rsnap.data().createdAt || null) : null,
+          deletedAt: serverTimestamp(),
+          deletedBy: auth.currentUser.email || null,
+          deletedByUid: auth.currentUser.uid
+        });
+        await deleteDoc(doc(db, "polls", pollId, "responses", rid));
+        await deleteDoc(doc(db, "polls", pollId, "details", rid));
+      } catch (e) {
+        alert("Could not delete: " + (e?.message || e));
+        if (btn) btn.disabled = false;
+        return;
+      }
+      viewResults(pollId, p);
     }
 
     function downloadCsv(p, responses, detailMap){

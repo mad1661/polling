@@ -6,6 +6,7 @@ rules_version = '2';
 //                                  embedded widget can render it; only admins write)
 // * polls/{id}/responses/{uid}  -> one vote document per user (choice/ranking only)
 // * polls/{id}/details/{uid}    -> private text answers (name, member #, …); admin-only
+// * polls/{id}/deleted/{auto}   -> archive of soft-deleted votes (audit trail; admin-only)
 //
 // "Admin" = anyone signed in with a REAL account (email/password, Google, ...).
 // Public voters sign in anonymously, so we tell them apart by the sign-in
@@ -65,6 +66,16 @@ service cloud.firestore {
           && request.time < pollData(pollId).closesAt;
         allow update: if false;
         allow delete: if isAdmin();
+      }
+
+      // ---- Archive of deleted votes (audit trail; admin-only, immutable) ----
+      // A soft-deleted vote is copied here so it is never truly gone but no
+      // longer counts in results. Records who deleted it (deletedByUid must be
+      // the acting admin) and when. Cannot be edited or removed via the app.
+      match /deleted/{deletedId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin() && request.resource.data.deletedByUid == request.auth.uid;
+        allow update, delete: if false;
       }
     }
   }
