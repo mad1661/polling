@@ -1,0 +1,43 @@
+name: Deploy to Firebase Hosting on merge
+
+# Runs when commits land on main (i.e. when this/any PR is merged), and can also
+# be triggered by hand from the Actions tab. Publishes the site to the live
+# Hosting channel: https://polling-d51ee.web.app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never let two deploys run at once; newest wins.
+concurrency:
+  group: firebase-hosting-live
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Fail early with a clear message if the credential secret is missing,
+      # instead of a confusing auth error deep in the deploy step.
+      - name: Check that the deploy credential exists
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_POLLING_D51EE }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::error::Missing repository secret FIREBASE_SERVICE_ACCOUNT_POLLING_D51EE."
+            echo "::error::Add it under Settings → Secrets and variables → Actions. See README → 'Auto-deploy on merge'."
+            exit 1
+          fi
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to the live Hosting channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_POLLING_D51EE }}
+          channelId: live
+          projectId: polling-d51ee

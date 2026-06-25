@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+  <link rel="modulepreload" href="./assets/poll-widget.js?v=2">
+  <link rel="modulepreload" href="./assets/firebase-config.js">
+  <title>Poll</title>
+  <style>
+    html,body{margin:0;padding:0;background:transparent}
+    body{padding:16px}
+    #pollx-root{min-height:60px}
+    .pollx-fatal{font-family:system-ui,sans-serif;color:#a8071a;max-width:680px;margin:0 auto}
+  </style>
+</head>
+<body>
+  <!-- The poll renders here. The poll id comes from the ?id= query string. -->
+  <div id="pollx-root"></div>
+
+  <script type="module">
+    import { renderPoll } from "./assets/poll-widget.js?v=2";
+
+    const params = new URLSearchParams(location.search);
+    const pollId = params.get("id");
+    const root = document.getElementById("pollx-root");
+
+    if (!pollId) {
+      root.innerHTML = '<p class="pollx-fatal">Missing poll id. Use poll.html?id=YOUR_POLL_ID</p>';
+    } else {
+      renderPoll(root, pollId).catch((e) => {
+        console.error(e);
+        root.innerHTML = '<p class="pollx-fatal">Sorry, this poll failed to load.</p>';
+      });
+    }
+
+    // If embedded in an iframe with the resizer snippet, report our height so the
+    // iframe can grow to fit (no inner scrollbar). Harmless when not in an iframe.
+    function postHeight() {
+      const h = document.documentElement.scrollHeight;
+      parent.postMessage({ pollxHeight: h, pollId }, "*");
+    }
+    window.addEventListener("load", postHeight);
+    new ResizeObserver(postHeight).observe(document.documentElement);
+  </script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+rules_version = '2';
+
+// Security model
+// --------------
+// * polls/{id}                  -> the form configuration (public to read so the
+//                                  embedded widget can render it; only admins write)
+// * polls/{id}/responses/{uid}  -> one vote document per user (choice/ranking only)
+// * polls/{id}/details/{uid}    -> private text answers (name, member #, …); admin-only
+// * polls/{id}/deleted/{auto}   -> archive of soft-deleted votes (audit trail; admin-only)
+//
+// "Admin" = anyone signed in with a REAL account (email/password, Google, ...).
+// Public voters sign in anonymously, so we tell them apart by the sign-in
+// provider. Any admin can read every result of every poll at any time
+// ("universal" access). The public can only read raw votes AFTER the poll's
+// revealAt time — this is what makes the reveal genuinely secret rather than
+// just hidden in the page.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // A trusted admin is any authenticated, non-anonymous user.
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function pollData(pollId) {
+      return get(/databases/$(database)/documents/polls/$(pollId)).data;
+    }
+
+    match /polls/{pollId} {
+      // The form config has no results in it, so it is safe to read publicly.
+      allow read: if true;
+      // Only logged-in admins create / edit / delete polls.
+      allow create, update, delete: if isAdmin();
+
+      // ---- Raw votes -------------------------------------------------------
+      match /responses/{responseId} {
+        // Admins: always. Public: only once the reveal time has passed.
+        // A voter may always read back their own submission.
+        allow read: if isAdmin()
+          || request.time >= pollData(pollId).revealAt
+          || (isSignedIn() && request.auth.uid == responseId);
+
+        // Anyone signed in (including anonymous) may vote ONCE while the poll
+        // is open. Forcing the doc id to equal the uid enforces one-vote-per-user.
+        allow create: if isSignedIn()
+          && responseId == request.auth.uid
+          && request.time < pollData(pollId).closesAt;
+
+        // Votes are immutable. Admins may delete (e.g. clean up spam / testing).
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+
+      // ---- Private per-respondent details (name, member #, free text) ------
+      // NEVER public: only an admin (or the author of the doc) may read it.
+      // This keeps identifying info out of the publicly-revealed results.
+      match /details/{responseId} {
+        allow read: if isAdmin() || (isSignedIn() && request.auth.uid == responseId);
+        allow create: if isSignedIn()
+          && responseId == request.auth.uid
+          && request.time < pollData(pollId).closesAt;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+
+      // ---- Archive of deleted votes (audit trail; admin-only, immutable) ----
+      // A soft-deleted vote is copied here so it is never truly gone but no
+      // longer counts in results. Records who deleted it (deletedByUid must be
+      // the acting admin) and when. Cannot be edited or removed via the app.
+      match /deleted/{deletedId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin() && request.resource.data.deletedByUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
