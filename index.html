@@ -135,6 +135,11 @@
             Tip: use <b>Short text</b> for things like Name, Member #, or Car # — and tick
             <b>Required</b> if they must answer. Text answers are private (only you see them).
           </p>
+          <p class="muted" style="font-size:.85rem;margin-top:.2rem">
+            <b>Follow-up questions:</b> add a question <i>after</i> a multiple-choice/checkbox one,
+            then use the <b>“↳ Follow-up — show only if”</b> dropdown on that question to show it
+            only for a specific answer.
+          </p>
           <div id="questions-editor"></div>
           <div class="row" style="margin:.5rem 0 1rem">
             <button type="button" class="btn secondary sm" data-add="single">+ Multiple choice (pick one)</button>
@@ -302,21 +307,22 @@
 
     // Build the "show only if …" condition selector for a question (qi = its index).
     function conditionEditor(q, qi){
-      const priors = builderQuestions.slice(0, qi).filter(x => (x.type === "single" || x.type === "multiple") && (x.options || []).some(o => (o.label || "").trim()));
+      // Any earlier multiple-choice / checkbox question can be a trigger.
+      const priors = builderQuestions.slice(0, qi).filter(x => x.type === "single" || x.type === "multiple");
       if (!priors.length) return "";
       const si = q.showIf || {};
       const ctrl = si.questionId ? builderQuestions.find(x => x.id === si.questionId) : null;
       const ctrlOpts = (ctrl && (ctrl.type === "single" || ctrl.type === "multiple")) ? (ctrl.options || []) : [];
       return `<div class="cond-row">
-        <span class="cond-label">↳ Show only if</span>
+        <span class="cond-label">↳ Follow-up — show only if</span>
         <select data-field="cond-q">
-          <option value="">always</option>
-          ${priors.map(c => `<option value="${c.id}" ${si.questionId === c.id ? "selected" : ""}>${escAttr(c.title || "(untitled)")}</option>`).join("")}
+          <option value="">always show</option>
+          ${priors.map(c => `<option value="${c.id}" ${si.questionId === c.id ? "selected" : ""}>${escAttr(c.title || "(untitled question)")}</option>`).join("")}
         </select>
-        ${ctrl ? `<span class="cond-label">is</span>
+        ${ctrl ? `<span class="cond-label">is answered</span>
           <select data-field="cond-opt">
             <option value="">choose answer…</option>
-            ${ctrlOpts.map(o => `<option value="${o.id}" ${si.optionId === o.id ? "selected" : ""}>${escAttr(o.label || "(option)")}</option>`).join("")}
+            ${ctrlOpts.map((o, i) => `<option value="${o.id}" ${si.optionId === o.id ? "selected" : ""}>${escAttr(o.label || ("Option " + (i + 1)))}</option>`).join("")}
           </select>` : ""}
       </div>`;
     }
