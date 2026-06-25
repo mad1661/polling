@@ -49,9 +49,10 @@
     .cond-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.6rem;font-size:.85rem;color:#555}
     .cond-row select{width:auto;padding:.3rem .5rem;font-size:.85rem;border-radius:7px}
     .cond-label{white-space:nowrap}
+    .cond-badge{background:#eef1fb;color:#33405e;padding:.2rem .55rem;border-radius:6px;font-weight:600}
     .opt-row{display:flex;gap:.5rem;align-items:center;margin:.35rem 0}
     .opt-row input{flex:1}
-    .opt-row .link{flex:0 0 auto;white-space:nowrap}
+    .opt-row .link,.opt-row .btn{flex:0 0 auto;white-space:nowrap}
     .qcard-fu{border-left:3px solid var(--brand);background:#f6f8ff}
     .pill{display:inline-block;font-size:.78rem;padding:.15rem .55rem;border-radius:20px;font-weight:600}
     .pill.open{background:#e8f9ee;color:#137a3a}.pill.closed{background:#fdeaea;color:#b3261e}
@@ -138,10 +139,9 @@
             <b>Required</b> if they must answer. Text answers are private (only you see them).
           </p>
           <p class="muted" style="font-size:.85rem;margin-top:.2rem">
-            <b>Follow-up questions:</b> click <b>+ follow-up</b> next to any answer to add a
-            multiple-choice question shown only when that answer is picked. (You can change its
-            type or condition afterward — any question can be a follow-up via its
-            <b>Follow-up — show only if</b> dropdown.)
+            <b>Follow-up questions:</b> click the <b>+ Follow up</b> button next to any answer to add
+            a multiple-choice question that appears only when that answer is picked. Follow-ups have
+            their own answers, so you can add follow-ups to follow-ups.
           </p>
           <div id="questions-editor"></div>
           <div class="row" style="margin:.5rem 0 1rem">
@@ -300,7 +300,7 @@
               ${q.options.map(o => `
                 <div class="opt-row" data-oid="${o.id}">
                   <input type="text" data-field="opt" placeholder="Option" value="${escAttr(o.label)}">
-                  <button type="button" class="link" data-act="add-followup" title="Add a follow-up question shown only when this answer is picked">+ follow-up</button>
+                  <button type="button" class="btn secondary sm" data-act="add-followup" title="Add a follow-up question shown only when this answer is picked">+ Follow up</button>
                   <button type="button" class="link danger" data-act="del-opt" title="Remove option">✕</button>
                 </div>`).join("")}
               <button type="button" class="link" data-act="add-opt">+ Add option</button>
@@ -319,25 +319,17 @@
       return d;
     }
 
-    // Build the "show only if …" condition selector for a question (qi = its index).
-    function conditionEditor(q, qi){
-      // Any earlier multiple-choice / checkbox question can be a trigger.
-      const priors = builderQuestions.slice(0, qi).filter(x => x.type === "single" || x.type === "multiple");
-      if (!priors.length) return "";
-      const si = q.showIf || {};
-      const ctrl = si.questionId ? builderQuestions.find(x => x.id === si.questionId) : null;
-      const ctrlOpts = (ctrl && (ctrl.type === "single" || ctrl.type === "multiple")) ? (ctrl.options || []) : [];
+    // A follow-up question shows a plain read-only badge of what reveals it (no
+    // dropdowns). Follow-ups are created by the "+ Follow up" button on answers.
+    function conditionEditor(q){
+      if (!(q.showIf && q.showIf.questionId)) return "";
+      const ctrl = builderQuestions.find(x => x.id === q.showIf.questionId);
+      const opt = ctrl && (ctrl.options || []).find(o => o.id === q.showIf.optionId);
+      const ctrlTitle = (ctrl && (ctrl.title || "").trim()) ? ctrl.title : "a question";
+      const optLabel = (opt && (opt.label || "").trim()) ? opt.label : "an answer";
       return `<div class="cond-row">
-        <span class="cond-label">Follow-up — show only if</span>
-        <select data-field="cond-q">
-          <option value="">always show</option>
-          ${priors.map(c => `<option value="${c.id}" ${si.questionId === c.id ? "selected" : ""}>${escAttr(c.title || "(untitled question)")}</option>`).join("")}
-        </select>
-        ${ctrl ? `<span class="cond-label">is answered</span>
-          <select data-field="cond-opt">
-            <option value="">choose answer…</option>
-            ${ctrlOpts.map((o, i) => `<option value="${o.id}" ${si.optionId === o.id ? "selected" : ""}>${escAttr(o.label || ("Option " + (i + 1)))}</option>`).join("")}
-          </select>` : ""}
+        <span class="cond-badge">Follow-up — shows when “${escAttr(ctrlTitle)}” = “${escAttr(optLabel)}”</span>
+        <button type="button" class="link danger" data-act="rm-followup">remove</button>
       </div>`;
     }
 
@@ -381,6 +373,7 @@
         fu.showIf = { questionId: q.id, optionId: oid };
         builderQuestions.splice(idx + 1, 0, fu);
       }
+      else if (act === "rm-followup") { q.showIf = null; }
       renderQuestions();
     });
     document.querySelectorAll("[data-add]").forEach(b =>
