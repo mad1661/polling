@@ -196,6 +196,50 @@ export async function renderPoll(root, pollId) {
       });
       paintRank(container, qid);
     });
+
+    // Conditional questions: re-evaluate which questions show whenever an answer
+    // changes, and once on first render.
+    const formEl = body.querySelector("#pollx-form");
+    formEl.addEventListener("change", applyConditions);
+    formEl.addEventListener("input", applyConditions);
+    applyConditions();
+  }
+
+  // Show/hide conditional questions based on current answers. A question with
+  // showIf appears only when its controlling question is visible AND the chosen
+  // option is selected. Hidden questions are cleared so they don't carry stale
+  // answers (and don't trigger downstream conditions or get submitted).
+  function applyConditions() {
+    const form = root.querySelector("#pollx-form");
+    if (!form) return;
+    const visible = {}, selected = {};
+    for (const q of questions) {
+      let show = true;
+      if (q.showIf && q.showIf.questionId) {
+        const sel = selected[q.showIf.questionId];
+        show = !!visible[q.showIf.questionId] && !!sel && sel.has(q.showIf.optionId);
+      }
+      visible[q.id] = show;
+      const el = form.querySelector(`[data-qid="${cssEscape(q.id)}"]`);
+      if (el) el.style.display = show ? "" : "none";
+      if (!show) clearQuestion(form, q);
+      selected[q.id] = (show && (q.type === "single" || q.type === "multiple"))
+        ? new Set([...form.querySelectorAll(`input[name="${cssEscape(q.id)}"]:checked`)].map(i => i.value))
+        : new Set();
+    }
+  }
+
+  function clearQuestion(form, q) {
+    if (q.type === "single" || q.type === "multiple") {
+      form.querySelectorAll(`input[name="${cssEscape(q.id)}"]`).forEach(i => { i.checked = false; });
+    } else if (q.type === "rank") {
+      rankState[q.id] = [];
+      const c = form.querySelector(`[data-rank-q="${cssEscape(q.id)}"]`);
+      if (c) paintRank(c, q.id);
+    } else {
+      const el = form.elements[q.id];
+      if (el) el.value = "";
+    }
   }
 
   function renderQuestionInput(q) {
@@ -221,7 +265,7 @@ export async function renderPoll(root, pollId) {
           <span>${esc(o.label)}</span>
         </label>`).join("");
     }
-    return `<div class="pollx-q"><h3>${esc(q.title)}${reqMark(q)}</h3>${inner}</div>`;
+    return `<div class="pollx-q" data-qid="${esc(q.id)}"${q.showIf ? ' style="display:none"' : ''}><h3>${esc(q.title)}${reqMark(q)}</h3>${inner}</div>`;
   }
 
   async function onSubmit(e) {
@@ -233,6 +277,8 @@ export async function renderPoll(root, pollId) {
     const votes = {};    // single / multiple / rank  -> responses doc
     const details = {};  // short / text              -> admin-only details doc
     for (const q of questions) {
+      const qEl = form.querySelector(`[data-qid="${cssEscape(q.id)}"]`);
+      if (qEl && qEl.style.display === "none") continue; // skip hidden conditional questions
       if (q.type === "short" || q.type === "text") {
         const v = (form.elements[q.id]?.value || "").trim();
         if (v) details[q.id] = v.slice(0, q.type === "short" ? 200 : 2000);
@@ -249,7 +295,11 @@ export async function renderPoll(root, pollId) {
     }
 
     const answered = new Set([...Object.keys(votes), ...Object.keys(details)]);
-    const missing = questions.filter(q => q.required && !answered.has(q.id));
+    const missing = questions.filter(q => {
+      if (!q.required || answered.has(q.id)) return false;
+      const qEl = form.querySelector(`[data-qid="${cssEscape(q.id)}"]`);
+      return !(qEl && qEl.style.display === "none"); // hidden conditional → not required
+    });
     if (missing.length) {
       msg.textContent = `Please answer: ${missing.map(q => q.title).join(", ")}`;
       return;

@@ -46,6 +46,9 @@
     .qtype{display:inline-block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);background:#eef1fb;padding:.15rem .5rem;border-radius:6px}
     .req-toggle{display:flex;align-items:center;gap:.35rem;font-size:.85rem;color:#444}
     .req-toggle input{width:auto}
+    .cond-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.6rem;font-size:.85rem;color:#555}
+    .cond-row select{width:auto;padding:.3rem .5rem;font-size:.85rem;border-radius:7px}
+    .cond-label{white-space:nowrap}
     .opt-row{display:flex;gap:.5rem;align-items:center;margin:.35rem 0}
     .opt-row input{flex:1}
     .pill{display:inline-block;font-size:.78rem;padding:.15rem .55rem;border-radius:20px;font-weight:600}
@@ -274,7 +277,7 @@
     function renderQuestions(){
       const box = $("#questions-editor");
       if (!builderQuestions.length){ box.innerHTML = `<p class="muted">No questions yet — add one below.</p>`; return; }
-      box.innerHTML = builderQuestions.map((q) => `
+      box.innerHTML = builderQuestions.map((q, qi) => `
         <div class="qcard" data-qid="${q.id}">
           <div class="qhead">
             <span class="qtype">${typeLabel(q.type)}</span>
@@ -293,7 +296,29 @@
                 </div>`).join("")}
               <button type="button" class="link" data-act="add-opt">+ Add option</button>
             </div>` : ""}
+          ${conditionEditor(q, qi)}
         </div>`).join("");
+    }
+
+    // Build the "show only if …" condition selector for a question (qi = its index).
+    function conditionEditor(q, qi){
+      const priors = builderQuestions.slice(0, qi).filter(x => (x.type === "single" || x.type === "multiple") && (x.options || []).some(o => (o.label || "").trim()));
+      if (!priors.length) return "";
+      const si = q.showIf || {};
+      const ctrl = si.questionId ? builderQuestions.find(x => x.id === si.questionId) : null;
+      const ctrlOpts = (ctrl && (ctrl.type === "single" || ctrl.type === "multiple")) ? (ctrl.options || []) : [];
+      return `<div class="cond-row">
+        <span class="cond-label">↳ Show only if</span>
+        <select data-field="cond-q">
+          <option value="">always</option>
+          ${priors.map(c => `<option value="${c.id}" ${si.questionId === c.id ? "selected" : ""}>${escAttr(c.title || "(untitled)")}</option>`).join("")}
+        </select>
+        ${ctrl ? `<span class="cond-label">is</span>
+          <select data-field="cond-opt">
+            <option value="">choose answer…</option>
+            ${ctrlOpts.map(o => `<option value="${o.id}" ${si.optionId === o.id ? "selected" : ""}>${escAttr(o.label || "(option)")}</option>`).join("")}
+          </select>` : ""}
+      </div>`;
     }
 
     // delegated input -> update model (no re-render, keeps focus)
@@ -306,6 +331,15 @@
       else if (f === "opt") {
         const oid = e.target.closest(".opt-row").dataset.oid;
         const o = q.options.find(x => x.id === oid); if (o) o.label = e.target.value;
+      }
+      else if (f === "cond-q") {
+        const v = e.target.value;
+        q.showIf = v ? { questionId: v, optionId: (q.showIf && q.showIf.questionId === v) ? q.showIf.optionId : "" } : null;
+        renderQuestions();
+      }
+      else if (f === "cond-opt") {
+        if (!q.showIf) q.showIf = {};
+        q.showIf.optionId = e.target.value;
       }
     });
     // delegated clicks -> structural changes (re-render)
@@ -352,9 +386,19 @@
           // rejects `undefined` field values, so we must omit it rather than set undefined.
           const cq = { id: q.id, type: q.type, title: q.title.trim(), required: !!q.required };
           if (q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
+          if (q.showIf && q.showIf.questionId && q.showIf.optionId) cq.showIf = { questionId: q.showIf.questionId, optionId: q.showIf.optionId };
           return cq;
         })
         .filter(q => q.title && (TEXT_TYPES.includes(q.type) || (q.options && q.options.length >= 2)));
+      // Validate conditions: controller must be an earlier choice question that
+      // actually has the chosen option; otherwise drop the condition (show always).
+      cleanQs.forEach((q, i) => {
+        if (!q.showIf) return;
+        const ci = cleanQs.findIndex(c => c.id === q.showIf.questionId);
+        const c = ci >= 0 ? cleanQs[ci] : null;
+        const ok = c && ci < i && (c.type === "single" || c.type === "multiple") && (c.options || []).some(o => o.id === q.showIf.optionId);
+        if (!ok) delete q.showIf;
+      });
       if (!cleanQs.length) return showFormMsg("Add at least one question (choice/ranking questions need 2+ options).", "err");
       const revealStr = $("#f-reveal").value, closeStr = $("#f-close").value;
       if (!revealStr || !closeStr) return showFormMsg("Please set both the reveal and close times.", "err");
@@ -446,7 +490,8 @@
       if (c) $("#f-close").value = toLocalInput(c);
       builderQuestions = (p.questions || []).map(q => ({
         id: q.id || uid(), type: q.type, title: q.title, required: !!q.required,
-        options: q.options ? q.options.map(o => ({ id:o.id||uid(), label:o.label })) : undefined
+        options: q.options ? q.options.map(o => ({ id:o.id||uid(), label:o.label })) : undefined,
+        showIf: q.showIf ? { questionId: q.showIf.questionId, optionId: q.showIf.optionId } : null
       }));
       renderQuestions();
       $("#builder-title").textContent = "Edit poll";
