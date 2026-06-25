@@ -51,6 +51,8 @@
     .cond-label{white-space:nowrap}
     .opt-row{display:flex;gap:.5rem;align-items:center;margin:.35rem 0}
     .opt-row input{flex:1}
+    .opt-row .link{flex:0 0 auto;white-space:nowrap}
+    .qcard-fu{border-left:3px solid var(--brand);background:#f6f8ff}
     .pill{display:inline-block;font-size:.78rem;padding:.15rem .55rem;border-radius:20px;font-weight:600}
     .pill.open{background:#e8f9ee;color:#137a3a}.pill.closed{background:#fdeaea;color:#b3261e}
     .pill.hidden{background:#fff4e5;color:#a35b00}.pill.shown{background:#e9f0ff;color:#284bbd}
@@ -136,9 +138,10 @@
             <b>Required</b> if they must answer. Text answers are private (only you see them).
           </p>
           <p class="muted" style="font-size:.85rem;margin-top:.2rem">
-            <b>Follow-up questions:</b> add a question <i>after</i> a multiple-choice/checkbox one,
-            then use the <b>“↳ Follow-up — show only if”</b> dropdown on that question to show it
-            only for a specific answer.
+            <b>Follow-up questions:</b> click <b>+ follow-up</b> next to any answer to add a
+            multiple-choice question shown only when that answer is picked. (You can change its
+            type or condition afterward — any question can be a follow-up via its
+            <b>Follow-up — show only if</b> dropdown.)
           </p>
           <div id="questions-editor"></div>
           <div class="row" style="margin:.5rem 0 1rem">
@@ -283,7 +286,7 @@
       const box = $("#questions-editor");
       if (!builderQuestions.length){ box.innerHTML = `<p class="muted">No questions yet — add one below.</p>`; return; }
       box.innerHTML = builderQuestions.map((q, qi) => `
-        <div class="qcard" data-qid="${q.id}">
+        <div class="qcard${q.showIf && q.showIf.questionId ? ' qcard-fu' : ''}" data-qid="${q.id}"${q.showIf && q.showIf.questionId ? ` style="margin-left:${Math.min(questionDepth(q), 6) * 1.4}rem"` : ""}>
           <div class="qhead">
             <span class="qtype">${typeLabel(q.type)}</span>
             <span class="row" style="gap:.7rem">
@@ -297,12 +300,23 @@
               ${q.options.map(o => `
                 <div class="opt-row" data-oid="${o.id}">
                   <input type="text" data-field="opt" placeholder="Option" value="${escAttr(o.label)}">
+                  <button type="button" class="link" data-act="add-followup" title="Add a follow-up question shown only when this answer is picked">+ follow-up</button>
                   <button type="button" class="link danger" data-act="del-opt" title="Remove option">✕</button>
                 </div>`).join("")}
               <button type="button" class="link" data-act="add-opt">+ Add option</button>
             </div>` : ""}
           ${conditionEditor(q, qi)}
         </div>`).join("");
+    }
+
+    // How deeply nested a question is in the follow-up chain (used for indentation).
+    function questionDepth(q){
+      let d = 0, cur = q, guard = 0;
+      while (cur && cur.showIf && cur.showIf.questionId && guard++ < 20) {
+        cur = builderQuestions.find(x => x.id === cur.showIf.questionId);
+        if (cur) d++; else break;
+      }
+      return d;
     }
 
     // Build the "show only if …" condition selector for a question (qi = its index).
@@ -314,7 +328,7 @@
       const ctrl = si.questionId ? builderQuestions.find(x => x.id === si.questionId) : null;
       const ctrlOpts = (ctrl && (ctrl.type === "single" || ctrl.type === "multiple")) ? (ctrl.options || []) : [];
       return `<div class="cond-row">
-        <span class="cond-label">↳ Follow-up — show only if</span>
+        <span class="cond-label">Follow-up — show only if</span>
         <select data-field="cond-q">
           <option value="">always show</option>
           ${priors.map(c => `<option value="${c.id}" ${si.questionId === c.id ? "selected" : ""}>${escAttr(c.title || "(untitled question)")}</option>`).join("")}
@@ -358,6 +372,14 @@
       else if (act === "del-opt") {
         const oid = e.target.closest(".opt-row").dataset.oid;
         q.options = q.options.filter(o => o.id !== oid);
+      }
+      else if (act === "add-followup") {
+        // Create a multiple-choice follow-up tied to this answer, right after this question.
+        const oid = e.target.closest(".opt-row").dataset.oid;
+        const idx = builderQuestions.findIndex(x => x.id === q.id);
+        const fu = blankQuestion("single");
+        fu.showIf = { questionId: q.id, optionId: oid };
+        builderQuestions.splice(idx + 1, 0, fu);
       }
       renderQuestions();
     });
