@@ -42,8 +42,12 @@
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
     @media(max-width:560px){.grid2{grid-template-columns:1fr}}
     .qcard{border:1px solid var(--line);border-radius:11px;padding:.85rem;margin:.6rem 0;background:#fbfbfd}
-    .qhead{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem}
+    .qhead{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem;flex-wrap:wrap}
     .qtype{display:inline-block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);background:#eef1fb;padding:.15rem .5rem;border-radius:6px}
+    .qtype-switch{display:flex;flex-wrap:wrap;gap:.25rem}
+    .qtype-switch button{font-size:.72rem;font-weight:600;padding:.18rem .55rem;border:1px solid var(--line);border-radius:20px;background:#fff;color:#777;cursor:pointer}
+    .qtype-switch button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .qtype-switch button:hover{border-color:var(--brand)}
     .req-toggle{display:flex;align-items:center;gap:.35rem;font-size:.85rem;color:#444}
     .req-toggle input{width:auto}
     .cond-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.6rem;font-size:.85rem;color:#555}
@@ -139,9 +143,9 @@
             <b>Required</b> if they must answer. Text answers are private (only you see them).
           </p>
           <p class="muted" style="font-size:.85rem;margin-top:.2rem">
-            <b>Follow-up questions:</b> click the <b>+ Follow up</b> button next to any answer to add
-            a multiple-choice question that appears only when that answer is picked. Follow-ups have
-            their own answers, so you can add follow-ups to follow-ups.
+            <b>Follow-up questions:</b> click <b>+ Follow up</b> next to any answer to add a follow-up
+            shown only when that answer is picked. Use the <b>type buttons</b> at the top of a question
+            to change it (e.g. to a <b>text box</b>). Follow-ups have their own answers, so you can chain them.
           </p>
           <div id="questions-editor"></div>
           <div class="row" style="margin:.5rem 0 1rem">
@@ -288,7 +292,13 @@
       box.innerHTML = builderQuestions.map((q, qi) => `
         <div class="qcard${q.showIf && q.showIf.questionId ? ' qcard-fu' : ''}" data-qid="${q.id}"${q.showIf && q.showIf.questionId ? ` style="margin-left:${Math.min(questionDepth(q), 6) * 1.4}rem"` : ""}>
           <div class="qhead">
-            <span class="qtype">${typeLabel(q.type)}</span>
+            <span class="qtype-switch">
+              <button type="button" data-set-type="single" class="${q.type==='single'?'on':''}">Multiple choice</button>
+              <button type="button" data-set-type="multiple" class="${q.type==='multiple'?'on':''}">Checkboxes</button>
+              <button type="button" data-set-type="rank" class="${q.type==='rank'?'on':''}">Ranking</button>
+              <button type="button" data-set-type="short" class="${q.type==='short'?'on':''}">Short text</button>
+              <button type="button" data-set-type="text" class="${q.type==='text'?'on':''}">Long text</button>
+            </span>
             <span class="row" style="gap:.7rem">
               <label class="req-toggle"><input type="checkbox" data-field="required" ${q.required?"checked":""}> Required</label>
               <button type="button" class="link danger" data-act="del-q">Remove</button>
@@ -356,8 +366,15 @@
     });
     // delegated clicks -> structural changes (re-render)
     $("#questions-editor").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-act]"); if (!btn) return;
+      const btn = e.target.closest("[data-act],[data-set-type]"); if (!btn) return;
       const card = e.target.closest(".qcard"); const q = builderQuestions.find(x => x.id === card.dataset.qid);
+      if (!q) return;
+      if (btn.dataset.setType) {
+        q.type = btn.dataset.setType;
+        if (OPTION_TYPES.includes(q.type) && (!q.options || !q.options.length)) q.options = [{ id: uid(), label: "" }, { id: uid(), label: "" }];
+        renderQuestions();
+        return;
+      }
       const act = btn.dataset.act;
       if (act === "del-q") builderQuestions = builderQuestions.filter(x => x.id !== q.id);
       else if (act === "add-opt") q.options.push({ id: uid(), label: "" });
@@ -406,7 +423,7 @@
           // Build the object WITHOUT an `options` key for text questions — Firestore
           // rejects `undefined` field values, so we must omit it rather than set undefined.
           const cq = { id: q.id, type: q.type, title: q.title.trim(), required: !!q.required };
-          if (q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
+          if (OPTION_TYPES.includes(q.type) && q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
           if (q.showIf && q.showIf.questionId && q.showIf.optionId) cq.showIf = { questionId: q.showIf.questionId, optionId: q.showIf.optionId };
           return cq;
         })
