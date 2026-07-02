@@ -157,8 +157,13 @@
             <button type="button" class="btn secondary sm" data-add="text">+ Long text (paragraph)</button>
           </div>
 
+          <label class="req-toggle" style="margin:.2rem 0 .7rem;font-size:.92rem">
+            <input type="checkbox" id="f-hide-results">
+            Don't show results to the public — only show when voting closes (you still see every result here)
+          </label>
+
           <div class="grid2">
-            <label class="field"><span>Results revealed at</span>
+            <label class="field" id="reveal-field"><span>Results revealed at</span>
               <input type="datetime-local" id="f-reveal" required>
               <span class="row" style="margin-top:.4rem">
                 <button type="button" class="link" data-reveal-weeks="1">+1 week</button>
@@ -178,6 +183,7 @@
           <p class="muted" style="font-size:.85rem;margin-top:-.3rem">
             Example: reveal in 2 weeks, close in 3 weeks — people keep voting for a
             week after numbers go public. Results stay secret to the public until the reveal time.
+            Tick the box above to keep results private forever — the public only ever sees the closing date.
           </p>
 
           <div class="row" style="margin-top:.5rem">
@@ -237,6 +243,9 @@
     const pct = (n,t) => t>0 ? Math.round(n/t*100) : 0;
     const OPTION_TYPES = ["single","multiple","rank"];
     const TEXT_TYPES = ["short","text"];
+    // Sentinel reveal time for "results private" polls: so far in the future the
+    // public reveal never arrives, keeping results admin-only via the rules.
+    const HIDDEN_REVEAL_AT = new Date("9999-12-31T23:59:59Z");
     function toLocalInput(d){
       const p = (n)=>String(n).padStart(2,"0");
       return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -450,9 +459,20 @@
     document.querySelectorAll("[data-close-weeks]").forEach(b =>
       b.addEventListener("click", () => { $("#f-close").value = toLocalInput(weeksFromNow(+b.dataset.closeWeeks)); }));
 
+    // "Don't show results to the public" — hides the reveal-time field (there is
+    // nothing to reveal) and makes it optional so the form still validates.
+    function applyHideResults(){
+      const on = $("#f-hide-results").checked;
+      $("#reveal-field").classList.toggle("hide", on);
+      $("#f-reveal").disabled = on;
+      $("#f-reveal").required = !on;
+    }
+    $("#f-hide-results").addEventListener("change", applyHideResults);
+
     function resetBuilder(){
       $("#edit-id").value = "";
       $("#poll-form").reset();
+      applyHideResults();
       builderQuestions = [];
       renderQuestions();
       $("#builder-title").textContent = "Create a new poll";
@@ -488,15 +508,22 @@
         if (!ok) delete q.showIf;
       });
       if (!cleanQs.length) return showFormMsg("Add at least one question (choice/ranking questions need 2+ options).", "err");
+      const hideResults = $("#f-hide-results").checked;
       const revealStr = $("#f-reveal").value, closeStr = $("#f-close").value;
-      if (!revealStr || !closeStr) return showFormMsg("Please set both the reveal and close times.", "err");
-      const revealAt = new Date(revealStr), closesAt = new Date(closeStr);
-      if (revealAt > closesAt) return showFormMsg("The reveal time should be on or before the close time.", "err");
+      if (!closeStr) return showFormMsg("Please set the voting close time.", "err");
+      if (!hideResults && !revealStr) return showFormMsg("Please set both the reveal and close times.", "err");
+      const closesAt = new Date(closeStr);
+      // When results are private, there is no public reveal. Park revealAt far in
+      // the future (year 9999) so the security rules never grant public reads —
+      // the secrecy stays enforced by the rules, not just hidden in the page.
+      const revealAt = hideResults ? HIDDEN_REVEAL_AT : new Date(revealStr);
+      if (!hideResults && revealAt > closesAt) return showFormMsg("The reveal time should be on or before the close time.", "err");
 
       const payload = {
         title,
         description: $("#f-desc").value.trim(),
         questions: cleanQs,
+        hideResults,
         revealAt: Timestamp.fromDate(revealAt),
         closesAt: Timestamp.fromDate(closesAt),
         ownerUid: auth.currentUser.uid,
@@ -537,7 +564,8 @@
         const p = d.data(); const id = d.id;
         const closesAt = toDate(p.closesAt), revealAt = toDate(p.revealAt);
         const open = !closesAt || now < closesAt;
-        const shown = !revealAt || now >= revealAt;
+        const hideResults = !!p.hideResults;
+        const shown = !hideResults && (!revealAt || now >= revealAt);
         const item = document.createElement("div");
         item.className = "poll-item";
         item.innerHTML = `
@@ -548,11 +576,11 @@
             </div>
             <div class="row">
               <span class="pill ${open?"open":"closed"}">${open?"Voting open":"Closed"}</span>
-              <span class="pill ${shown?"shown":"hidden"}">${shown?"Results public":"Results hidden"}</span>
+              <span class="pill ${shown?"shown":"hidden"}">${hideResults?"Results private":(shown?"Results public":"Results hidden")}</span>
             </div>
           </div>
           <div class="muted" style="font-size:.86rem;margin:.5rem 0">
-            Reveals: ${fmt(revealAt)} · Closes: ${fmt(closesAt)}
+            ${hideResults?"Results: private (never shown to the public)":"Reveals: "+fmt(revealAt)} · Closes: ${fmt(closesAt)}
           </div>
           <div class="row">
             <button class="btn sm" data-act="results">View results</button>
@@ -574,7 +602,9 @@
       $("#f-title").value = p.title || "";
       $("#f-desc").value = p.description || "";
       const r = toDate(p.revealAt), c = toDate(p.closesAt);
-      if (r) $("#f-reveal").value = toLocalInput(r);
+      $("#f-hide-results").checked = !!p.hideResults;
+      applyHideResults();
+      if (r && !p.hideResults) $("#f-reveal").value = toLocalInput(r);
       if (c) $("#f-close").value = toLocalInput(c);
       builderQuestions = (p.questions || []).map(q => ({
         id: q.id || uid(), type: q.type, title: q.title, required: !!q.required,

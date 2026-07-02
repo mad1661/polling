@@ -24,6 +24,14 @@ is real. **Logged-in admins always see every result immediately.** Setting revea
 *before* close (2 vs 3 weeks) means people keep voting for a week after the numbers
 go public — exactly your "enough time to get real numbers" idea.
 
+### Keep results private forever
+
+Prefer to **never** show results to the public? Tick **"Don't show results to the
+public"** when creating (or editing) a poll. The public then only sees the poll
+questions and **when voting closes** — no tallies, ever. You (and any admin) still
+see every result immediately in the dashboard. Under the hood this parks the reveal
+time far in the future, so the same security rules keep the votes admin-only.
+
 ---
 
 ## One-time setup
@@ -129,7 +137,7 @@ up everywhere it's embedded.
 
 ```
 polls/{pollId}
-  title, description, questions[], allowComments,
+  title, description, questions[], allowComments, hideResults (bool),
   revealAt (Timestamp), closesAt (Timestamp), createdAt, ownerUid, ownerEmail
   responses/{userUid}      answers:{questionId: optionId | optionId[] | text}, createdAt
   comments/{auto}          name, text, createdAt
