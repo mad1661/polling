@@ -342,6 +342,17 @@ export async function renderPoll(root, pollId) {
     const voteQs = questions.filter(q => VOTE_TYPES.includes(q.type));
     if (!voteQs.length) { el.innerHTML = ""; return; }
 
+    // Poll owner chose to keep results private: never show tallies to the public,
+    // just let them know when voting finishes (or that it has).
+    if (poll.hideResults) {
+      const when = closesAt
+        ? (isOpen ? `Voting closes ${fmt(closesAt)}.` : `Voting closed ${fmt(closesAt)}.`)
+        : "";
+      el.innerHTML = `<h2 class="pollx-section-title">Results</h2>` +
+        notice(`🔒 Results for this poll are kept private and won't be shown here. ${when}`.trim(), "");
+      return;
+    }
+
     let responses = null;
     try {
       const rs = await getDocs(collection(db, "polls", pollId, "responses"));
