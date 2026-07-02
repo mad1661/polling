@@ -787,7 +787,19 @@
         await deleteDoc(doc(db, "polls", pollId, "responses", rid));
         await deleteDoc(doc(db, "polls", pollId, "details", rid));
       } catch (e) {
-        alert("Could not delete: " + (e?.message || e));
+        const code = String(e?.code || e?.message || e);
+        if (code.includes("permission-denied") || code.includes("insufficient")) {
+          alert(
+            "Could not delete this vote — Firestore denied the write.\n\n" +
+            "This almost always means the security rules haven't been redeployed " +
+            "since the delete/archive feature was added (auto-deploy only pushes the " +
+            "website, not the rules). From the repo root, run:\n\n" +
+            "    firebase deploy --only firestore:rules\n\n" +
+            "then reload and try again."
+          );
+        } else {
+          alert("Could not delete: " + (e?.message || e));
+        }
         if (btn) btn.disabled = false;
         return;
       }
