@@ -582,11 +582,13 @@
           <div class="muted" style="font-size:.86rem;margin:.5rem 0">
             ${hideResults?"Results: private (never shown to the public)":"Reveals: "+fmt(revealAt)} · Closes: ${fmt(closesAt)}
           </div>
-          <div class="row">
-            <button class="btn sm" data-act="results">View results</button>
-            <button class="btn secondary sm" data-act="embed">Get embed code</button>
-            <button class="btn secondary sm" data-act="edit">Edit</button>
-            <button class="btn danger sm" data-act="delete">Delete</button>
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <div class="row">
+              <button class="btn sm" data-act="results">View results</button>
+              <button class="btn secondary sm" data-act="embed">Get embed code</button>
+              <button class="btn secondary sm" data-act="edit">Edit</button>
+            </div>
+            <button class="btn danger sm" data-act="delete" title="Permanently delete this poll" style="margin-left:auto">🗑 Delete poll…</button>
           </div>`;
         item.querySelector('[data-act="results"]').onclick = () => viewResults(id, p);
         item.querySelector('[data-act="embed"]').onclick = () => showEmbed(id, p);
@@ -621,7 +623,20 @@
     }
 
     async function deletePoll(id, p){
-      if (!confirm(`Delete "${p.title || "this poll"}"?\n\nThis removes the poll and all its responses. This cannot be undone.`)) return;
+      // Fail-safe: deleting a poll is irreversible, so require the admin to type
+      // the poll's exact name (like GitHub's repo-delete confirmation). A plain
+      // OK/Cancel is too easy to click through by accident.
+      const name = (p.title || "").trim();
+      const expected = name || "DELETE";
+      const typed = prompt(
+        `⚠️ This permanently deletes the poll and ALL of its responses. This cannot be undone.\n\n` +
+        `To confirm, type the poll's name exactly:\n\n${expected}`
+      );
+      if (typed === null) return;                       // cancelled
+      if (typed.trim() !== expected) {
+        alert("That didn't match — nothing was deleted.");
+        return;
+      }
       try {
         for (const sub of ["responses", "details"]) {
           const cs = await getDocs(collection(db, "polls", id, sub));
