@@ -42,15 +42,23 @@
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
     @media(max-width:560px){.grid2{grid-template-columns:1fr}}
     .qcard{border:1px solid var(--line);border-radius:11px;padding:.85rem;margin:.6rem 0;background:#fbfbfd}
-    .qhead{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem}
+    .qhead{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem;flex-wrap:wrap}
     .qtype{display:inline-block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);background:#eef1fb;padding:.15rem .5rem;border-radius:6px}
+    .qtype-switch{display:flex;flex-wrap:wrap;gap:.25rem}
+    .qtype-switch button{font-size:.72rem;font-weight:600;padding:.18rem .55rem;border:1px solid var(--line);border-radius:20px;background:#fff;color:#777;cursor:pointer}
+    .qtype-switch button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .qtype-switch button:hover{border-color:var(--brand)}
     .req-toggle{display:flex;align-items:center;gap:.35rem;font-size:.85rem;color:#444}
     .req-toggle input{width:auto}
     .cond-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.6rem;font-size:.85rem;color:#555}
     .cond-row select{width:auto;padding:.3rem .5rem;font-size:.85rem;border-radius:7px}
     .cond-label{white-space:nowrap}
+    .cond-badge{background:#eef1fb;color:#33405e;padding:.2rem .55rem;border-radius:6px;font-weight:600}
+    .qhead [data-act="move-up"],.qhead [data-act="move-down"]{font-size:1.1rem;line-height:1;padding:0 .2rem}
     .opt-row{display:flex;gap:.5rem;align-items:center;margin:.35rem 0}
     .opt-row input{flex:1}
+    .opt-row .link,.opt-row .btn{flex:0 0 auto;white-space:nowrap}
+    .qcard-fu{border-left:3px solid var(--brand);background:#f6f8ff}
     .pill{display:inline-block;font-size:.78rem;padding:.15rem .55rem;border-radius:20px;font-weight:600}
     .pill.open{background:#e8f9ee;color:#137a3a}.pill.closed{background:#fdeaea;color:#b3261e}
     .pill.hidden{background:#fff4e5;color:#a35b00}.pill.shown{background:#e9f0ff;color:#284bbd}
@@ -135,6 +143,11 @@
             Tip: use <b>Short text</b> for things like Name, Member #, or Car # — and tick
             <b>Required</b> if they must answer. Text answers are private (only you see them).
           </p>
+          <p class="muted" style="font-size:.85rem;margin-top:.2rem">
+            <b>Follow-up questions:</b> click <b>+ Follow up</b> next to any answer to add a follow-up
+            shown only when that answer is picked. Use the <b>type buttons</b> at the top of a question
+            to change it (e.g. to a <b>text box</b>). Follow-ups have their own answers, so you can chain them.
+          </p>
           <div id="questions-editor"></div>
           <div class="row" style="margin:.5rem 0 1rem">
             <button type="button" class="btn secondary sm" data-add="single">+ Multiple choice (pick one)</button>
@@ -144,8 +157,13 @@
             <button type="button" class="btn secondary sm" data-add="text">+ Long text (paragraph)</button>
           </div>
 
+          <label class="req-toggle" style="margin:.2rem 0 .7rem;font-size:.92rem">
+            <input type="checkbox" id="f-hide-results">
+            Don't show results to the public — only show when voting closes (you still see every result here)
+          </label>
+
           <div class="grid2">
-            <label class="field"><span>Results revealed at</span>
+            <label class="field" id="reveal-field"><span>Results revealed at</span>
               <input type="datetime-local" id="f-reveal" required>
               <span class="row" style="margin-top:.4rem">
                 <button type="button" class="link" data-reveal-weeks="1">+1 week</button>
@@ -165,6 +183,7 @@
           <p class="muted" style="font-size:.85rem;margin-top:-.3rem">
             Example: reveal in 2 weeks, close in 3 weeks — people keep voting for a
             week after numbers go public. Results stay secret to the public until the reveal time.
+            Tick the box above to keep results private forever — the public only ever sees the closing date.
           </p>
 
           <div class="row" style="margin-top:.5rem">
@@ -224,6 +243,9 @@
     const pct = (n,t) => t>0 ? Math.round(n/t*100) : 0;
     const OPTION_TYPES = ["single","multiple","rank"];
     const TEXT_TYPES = ["short","text"];
+    // Sentinel reveal time for "results private" polls: so far in the future the
+    // public reveal never arrives, keeping results admin-only via the rules.
+    const HIDDEN_REVEAL_AT = new Date("9999-12-31T23:59:59Z");
     function toLocalInput(d){
       const p = (n)=>String(n).padStart(2,"0");
       return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -278,10 +300,18 @@
       const box = $("#questions-editor");
       if (!builderQuestions.length){ box.innerHTML = `<p class="muted">No questions yet — add one below.</p>`; return; }
       box.innerHTML = builderQuestions.map((q, qi) => `
-        <div class="qcard" data-qid="${q.id}">
+        <div class="qcard${q.showIf && q.showIf.questionId ? ' qcard-fu' : ''}" data-qid="${q.id}"${q.showIf && q.showIf.questionId ? ` style="margin-left:${Math.min(questionDepth(q), 6) * 1.4}rem"` : ""}>
           <div class="qhead">
-            <span class="qtype">${typeLabel(q.type)}</span>
-            <span class="row" style="gap:.7rem">
+            <span class="qtype-switch">
+              <button type="button" data-set-type="single" class="${q.type==='single'?'on':''}">Multiple choice</button>
+              <button type="button" data-set-type="multiple" class="${q.type==='multiple'?'on':''}">Checkboxes</button>
+              <button type="button" data-set-type="rank" class="${q.type==='rank'?'on':''}">Ranking</button>
+              <button type="button" data-set-type="short" class="${q.type==='short'?'on':''}">Short text</button>
+              <button type="button" data-set-type="text" class="${q.type==='text'?'on':''}">Long text</button>
+            </span>
+            <span class="row" style="gap:.5rem">
+              <button type="button" class="link" data-act="move-up" title="Move up">↑</button>
+              <button type="button" class="link" data-act="move-down" title="Move down">↓</button>
               <label class="req-toggle"><input type="checkbox" data-field="required" ${q.required?"checked":""}> Required</label>
               <button type="button" class="link danger" data-act="del-q">Remove</button>
             </span>
@@ -292,6 +322,7 @@
               ${q.options.map(o => `
                 <div class="opt-row" data-oid="${o.id}">
                   <input type="text" data-field="opt" placeholder="Option" value="${escAttr(o.label)}">
+                  <button type="button" class="btn secondary sm" data-act="add-followup" title="Add a follow-up question shown only when this answer is picked">+ Follow up</button>
                   <button type="button" class="link danger" data-act="del-opt" title="Remove option">✕</button>
                 </div>`).join("")}
               <button type="button" class="link" data-act="add-opt">+ Add option</button>
@@ -300,24 +331,61 @@
         </div>`).join("");
     }
 
-    // Build the "show only if …" condition selector for a question (qi = its index).
-    function conditionEditor(q, qi){
-      const priors = builderQuestions.slice(0, qi).filter(x => (x.type === "single" || x.type === "multiple") && (x.options || []).some(o => (o.label || "").trim()));
-      if (!priors.length) return "";
-      const si = q.showIf || {};
-      const ctrl = si.questionId ? builderQuestions.find(x => x.id === si.questionId) : null;
-      const ctrlOpts = (ctrl && (ctrl.type === "single" || ctrl.type === "multiple")) ? (ctrl.options || []) : [];
+    // How deeply nested a question is in the follow-up chain (used for indentation).
+    function questionDepth(q){
+      let d = 0, cur = q, guard = 0;
+      while (cur && cur.showIf && cur.showIf.questionId && guard++ < 20) {
+        cur = builderQuestions.find(x => x.id === cur.showIf.questionId);
+        if (cur) d++; else break;
+      }
+      return d;
+    }
+
+    // Reorder builderQuestions into clean tree order: each question is immediately
+    // followed by its follow-up subtree (depth-first). Guarantees a parent always
+    // comes before its follow-ups, and keeps follow-ups grouped under their answer.
+    function normalize(){
+      const byParent = new Map();
+      for (const q of builderQuestions){
+        const pid = (q.showIf && q.showIf.questionId) ? q.showIf.questionId : "__root";
+        if (!byParent.has(pid)) byParent.set(pid, []);
+        byParent.get(pid).push(q);
+      }
+      const result = [], seen = new Set();
+      (function walk(pid){
+        for (const q of (byParent.get(pid) || [])){
+          if (seen.has(q.id)) continue;
+          seen.add(q.id); result.push(q); walk(q.id);
+        }
+      })("__root");
+      for (const q of builderQuestions) if (!seen.has(q.id)) { seen.add(q.id); result.push(q); }
+      builderQuestions = result;
+    }
+
+    // Move a question up/down among its siblings (same parent); its whole follow-up
+    // subtree moves with it.
+    function moveQuestion(qid, dir){
+      const q = builderQuestions.find(x => x.id === qid); if (!q) return;
+      const pid = (q.showIf && q.showIf.questionId) || null;
+      const sibs = builderQuestions.filter(x => (((x.showIf && x.showIf.questionId) || null) === pid));
+      const tgt = sibs.indexOf(q) + dir;
+      if (tgt < 0 || tgt >= sibs.length) return;
+      const i = builderQuestions.indexOf(q), j = builderQuestions.indexOf(sibs[tgt]);
+      [builderQuestions[i], builderQuestions[j]] = [builderQuestions[j], builderQuestions[i]];
+      normalize(); renderQuestions();
+    }
+
+    // A follow-up question shows a plain read-only badge of what reveals it (no
+    // dropdowns). Follow-ups are created by the "+ Follow up" button on answers.
+    function conditionEditor(q){
+      if (!(q.showIf && q.showIf.questionId)) return "";
+      const ctrl = builderQuestions.find(x => x.id === q.showIf.questionId);
+      const opt = ctrl && (ctrl.options || []).find(o => o.id === q.showIf.optionId);
+      const ctrlTitle = (ctrl && (ctrl.title || "").trim()) ? ctrl.title : "a question";
+      const optLabel = (opt && (opt.label || "").trim()) ? opt.label : "an answer";
       return `<div class="cond-row">
-        <span class="cond-label">↳ Show only if</span>
-        <select data-field="cond-q">
-          <option value="">always</option>
-          ${priors.map(c => `<option value="${c.id}" ${si.questionId === c.id ? "selected" : ""}>${escAttr(c.title || "(untitled)")}</option>`).join("")}
-        </select>
-        ${ctrl ? `<span class="cond-label">is</span>
-          <select data-field="cond-opt">
-            <option value="">choose answer…</option>
-            ${ctrlOpts.map(o => `<option value="${o.id}" ${si.optionId === o.id ? "selected" : ""}>${escAttr(o.label || "(option)")}</option>`).join("")}
-          </select>` : ""}
+        <span class="cond-badge">Follow-up — shows when “${escAttr(ctrlTitle)}” = “${escAttr(optLabel)}”</span>
+        <button type="button" class="link danger" data-act="rm-followup">remove</button>
       </div>`;
     }
 
@@ -344,15 +412,43 @@
     });
     // delegated clicks -> structural changes (re-render)
     $("#questions-editor").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-act]"); if (!btn) return;
+      const btn = e.target.closest("[data-act],[data-set-type]"); if (!btn) return;
       const card = e.target.closest(".qcard"); const q = builderQuestions.find(x => x.id === card.dataset.qid);
+      if (!q) return;
+      if (btn.dataset.setType) {
+        q.type = btn.dataset.setType;
+        if (OPTION_TYPES.includes(q.type) && (!q.options || !q.options.length)) q.options = [{ id: uid(), label: "" }, { id: uid(), label: "" }];
+        renderQuestions();
+        return;
+      }
       const act = btn.dataset.act;
-      if (act === "del-q") builderQuestions = builderQuestions.filter(x => x.id !== q.id);
+      if (act === "move-up") { moveQuestion(q.id, -1); return; }
+      else if (act === "move-down") { moveQuestion(q.id, +1); return; }
+      else if (act === "del-q") {
+        // Remove the question and all of its follow-up descendants.
+        const remove = new Set([q.id]);
+        for (let changed = true; changed; ) {
+          changed = false;
+          for (const x of builderQuestions)
+            if (x.showIf && x.showIf.questionId && remove.has(x.showIf.questionId) && !remove.has(x.id)) { remove.add(x.id); changed = true; }
+        }
+        builderQuestions = builderQuestions.filter(x => !remove.has(x.id));
+      }
       else if (act === "add-opt") q.options.push({ id: uid(), label: "" });
       else if (act === "del-opt") {
         const oid = e.target.closest(".opt-row").dataset.oid;
         q.options = q.options.filter(o => o.id !== oid);
       }
+      else if (act === "add-followup") {
+        // Create a multiple-choice follow-up tied to this answer, right after this question.
+        const oid = e.target.closest(".opt-row").dataset.oid;
+        const idx = builderQuestions.findIndex(x => x.id === q.id);
+        const fu = blankQuestion("single");
+        fu.showIf = { questionId: q.id, optionId: oid };
+        builderQuestions.splice(idx + 1, 0, fu);
+      }
+      else if (act === "rm-followup") { q.showIf = null; }
+      normalize();
       renderQuestions();
     });
     document.querySelectorAll("[data-add]").forEach(b =>
@@ -363,9 +459,20 @@
     document.querySelectorAll("[data-close-weeks]").forEach(b =>
       b.addEventListener("click", () => { $("#f-close").value = toLocalInput(weeksFromNow(+b.dataset.closeWeeks)); }));
 
+    // "Don't show results to the public" — hides the reveal-time field (there is
+    // nothing to reveal) and makes it optional so the form still validates.
+    function applyHideResults(){
+      const on = $("#f-hide-results").checked;
+      $("#reveal-field").classList.toggle("hide", on);
+      $("#f-reveal").disabled = on;
+      $("#f-reveal").required = !on;
+    }
+    $("#f-hide-results").addEventListener("change", applyHideResults);
+
     function resetBuilder(){
       $("#edit-id").value = "";
       $("#poll-form").reset();
+      applyHideResults();
       builderQuestions = [];
       renderQuestions();
       $("#builder-title").textContent = "Create a new poll";
@@ -380,12 +487,13 @@
       const msg = $("#form-msg"); msg.className = "msg hide";
 
       const title = $("#f-title").value.trim();
+      normalize();
       const cleanQs = builderQuestions
         .map(q => {
           // Build the object WITHOUT an `options` key for text questions — Firestore
           // rejects `undefined` field values, so we must omit it rather than set undefined.
           const cq = { id: q.id, type: q.type, title: q.title.trim(), required: !!q.required };
-          if (q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
+          if (OPTION_TYPES.includes(q.type) && q.options) cq.options = q.options.map(o => ({ id:o.id, label:o.label.trim() })).filter(o => o.label);
           if (q.showIf && q.showIf.questionId && q.showIf.optionId) cq.showIf = { questionId: q.showIf.questionId, optionId: q.showIf.optionId };
           return cq;
         })
@@ -400,15 +508,22 @@
         if (!ok) delete q.showIf;
       });
       if (!cleanQs.length) return showFormMsg("Add at least one question (choice/ranking questions need 2+ options).", "err");
+      const hideResults = $("#f-hide-results").checked;
       const revealStr = $("#f-reveal").value, closeStr = $("#f-close").value;
-      if (!revealStr || !closeStr) return showFormMsg("Please set both the reveal and close times.", "err");
-      const revealAt = new Date(revealStr), closesAt = new Date(closeStr);
-      if (revealAt > closesAt) return showFormMsg("The reveal time should be on or before the close time.", "err");
+      if (!closeStr) return showFormMsg("Please set the voting close time.", "err");
+      if (!hideResults && !revealStr) return showFormMsg("Please set both the reveal and close times.", "err");
+      const closesAt = new Date(closeStr);
+      // When results are private, there is no public reveal. Park revealAt far in
+      // the future (year 9999) so the security rules never grant public reads —
+      // the secrecy stays enforced by the rules, not just hidden in the page.
+      const revealAt = hideResults ? HIDDEN_REVEAL_AT : new Date(revealStr);
+      if (!hideResults && revealAt > closesAt) return showFormMsg("The reveal time should be on or before the close time.", "err");
 
       const payload = {
         title,
         description: $("#f-desc").value.trim(),
         questions: cleanQs,
+        hideResults,
         revealAt: Timestamp.fromDate(revealAt),
         closesAt: Timestamp.fromDate(closesAt),
         ownerUid: auth.currentUser.uid,
@@ -449,7 +564,8 @@
         const p = d.data(); const id = d.id;
         const closesAt = toDate(p.closesAt), revealAt = toDate(p.revealAt);
         const open = !closesAt || now < closesAt;
-        const shown = !revealAt || now >= revealAt;
+        const hideResults = !!p.hideResults;
+        const shown = !hideResults && (!revealAt || now >= revealAt);
         const item = document.createElement("div");
         item.className = "poll-item";
         item.innerHTML = `
@@ -460,17 +576,19 @@
             </div>
             <div class="row">
               <span class="pill ${open?"open":"closed"}">${open?"Voting open":"Closed"}</span>
-              <span class="pill ${shown?"shown":"hidden"}">${shown?"Results public":"Results hidden"}</span>
+              <span class="pill ${shown?"shown":"hidden"}">${hideResults?"Results private":(shown?"Results public":"Results hidden")}</span>
             </div>
           </div>
           <div class="muted" style="font-size:.86rem;margin:.5rem 0">
-            Reveals: ${fmt(revealAt)} · Closes: ${fmt(closesAt)}
+            ${hideResults?"Results: private (never shown to the public)":"Reveals: "+fmt(revealAt)} · Closes: ${fmt(closesAt)}
           </div>
-          <div class="row">
-            <button class="btn sm" data-act="results">View results</button>
-            <button class="btn secondary sm" data-act="embed">Get embed code</button>
-            <button class="btn secondary sm" data-act="edit">Edit</button>
-            <button class="btn danger sm" data-act="delete">Delete</button>
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <div class="row">
+              <button class="btn sm" data-act="results">View results</button>
+              <button class="btn secondary sm" data-act="embed">Get embed code</button>
+              <button class="btn secondary sm" data-act="edit">Edit</button>
+            </div>
+            <button class="btn danger sm" data-act="delete" title="Permanently delete this poll" style="margin-left:auto">🗑 Delete poll…</button>
           </div>`;
         item.querySelector('[data-act="results"]').onclick = () => viewResults(id, p);
         item.querySelector('[data-act="embed"]').onclick = () => showEmbed(id, p);
@@ -486,13 +604,16 @@
       $("#f-title").value = p.title || "";
       $("#f-desc").value = p.description || "";
       const r = toDate(p.revealAt), c = toDate(p.closesAt);
-      if (r) $("#f-reveal").value = toLocalInput(r);
+      $("#f-hide-results").checked = !!p.hideResults;
+      applyHideResults();
+      if (r && !p.hideResults) $("#f-reveal").value = toLocalInput(r);
       if (c) $("#f-close").value = toLocalInput(c);
       builderQuestions = (p.questions || []).map(q => ({
         id: q.id || uid(), type: q.type, title: q.title, required: !!q.required,
         options: q.options ? q.options.map(o => ({ id:o.id||uid(), label:o.label })) : undefined,
         showIf: q.showIf ? { questionId: q.showIf.questionId, optionId: q.showIf.optionId } : null
       }));
+      normalize();
       renderQuestions();
       $("#builder-title").textContent = "Edit poll";
       $("#save-btn").textContent = "Save changes";
@@ -502,7 +623,20 @@
     }
 
     async function deletePoll(id, p){
-      if (!confirm(`Delete "${p.title || "this poll"}"?\n\nThis removes the poll and all its responses. This cannot be undone.`)) return;
+      // Fail-safe: deleting a poll is irreversible, so require the admin to type
+      // the poll's exact name (like GitHub's repo-delete confirmation). A plain
+      // OK/Cancel is too easy to click through by accident.
+      const name = (p.title || "").trim();
+      const expected = name || "DELETE";
+      const typed = prompt(
+        `⚠️ This permanently deletes the poll and ALL of its responses. This cannot be undone.\n\n` +
+        `To confirm, type the poll's name exactly:\n\n${expected}`
+      );
+      if (typed === null) return;                       // cancelled
+      if (typed.trim() !== expected) {
+        alert("That didn't match — nothing was deleted.");
+        return;
+      }
       try {
         for (const sub of ["responses", "details"]) {
           const cs = await getDocs(collection(db, "polls", id, sub));
@@ -668,7 +802,19 @@
         await deleteDoc(doc(db, "polls", pollId, "responses", rid));
         await deleteDoc(doc(db, "polls", pollId, "details", rid));
       } catch (e) {
-        alert("Could not delete: " + (e?.message || e));
+        const code = String(e?.code || e?.message || e);
+        if (code.includes("permission-denied") || code.includes("insufficient")) {
+          alert(
+            "Could not delete this vote — Firestore denied the write.\n\n" +
+            "This almost always means the security rules haven't been redeployed " +
+            "since the delete/archive feature was added (auto-deploy only pushes the " +
+            "website, not the rules). From the repo root, run:\n\n" +
+            "    firebase deploy --only firestore:rules\n\n" +
+            "then reload and try again."
+          );
+        } else {
+          alert("Could not delete: " + (e?.message || e));
+        }
         if (btn) btn.disabled = false;
         return;
       }

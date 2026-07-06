@@ -342,6 +342,11 @@ export async function renderPoll(root, pollId) {
     const voteQs = questions.filter(q => VOTE_TYPES.includes(q.type));
     if (!voteQs.length) { el.innerHTML = ""; return; }
 
+    // Poll owner chose to keep results private: show the public nothing at all
+    // here — no "Results" heading, no placeholder. The voting-close date is
+    // already shown at the top of the poll, which is all the public needs.
+    if (poll.hideResults) { el.innerHTML = ""; return; }
+
     let responses = null;
     try {
       const rs = await getDocs(collection(db, "polls", pollId, "responses"));
