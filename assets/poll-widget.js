@@ -35,6 +35,30 @@ const fmt = (d) => d ? d.toLocaleString(undefined, {
 }) : "";
 const pct = (n, total) => total > 0 ? Math.round((n / total) * 100) : 0;
 
+// localStorage is best-effort only: inside a cross-site iframe (WordPress/Wix
+// embed) Safari and privacy modes can THROW on any access. One unguarded call
+// used to take down the whole poll, so every touch goes through this wrapper.
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } },
+  remove(k) { try { localStorage.removeItem(k); } catch (e) { /* storage blocked */ } }
+};
+
+// Retry transient network failures with backoff. Permission errors are real
+// answers from the security rules, not flakiness — those are never retried.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function withRetry(fn, tries = 3) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); } catch (e) {
+      lastErr = e;
+      if (String(e?.code || "").includes("permission-denied")) throw e;
+      if (i < tries - 1) await sleep(600 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
 function injectStyles() {
   if (document.getElementById("pollx-styles")) return;
   const style = document.createElement("style");
@@ -87,19 +111,26 @@ export async function renderPoll(root, pollId) {
 
   if (!pollId) { root.innerHTML = notice("No poll id was provided.", "err"); return; }
 
+  // No failure — a flaky connection, blocked storage in an embed, anything —
+  // may ever leave a blank poll. Show a message and a way to try again.
+  try {
+    await renderPollInner(root, pollId);
+  } catch (e) {
+    root.innerHTML = notice("Could not load this poll. Please check your connection.", "err") +
+      `<p style="text-align:center"><button class="pollx-btn" data-pollx-retry>Try again</button></p>`;
+    root.querySelector("[data-pollx-retry]").onclick = () => renderPoll(root, pollId);
+  }
+}
+
+async function renderPollInner(root, pollId) {
   // Start anonymous sign-in immediately, in parallel with loading the poll, so
-  // there's no extra round-trip before the form is ready to submit.
+  // there's no extra round-trip before the form is ready to submit. A failure
+  // here is NOT fatal — we render the form anyway and retry at submit time.
   const authPromise = auth.currentUser
     ? Promise.resolve(auth.currentUser)
     : signInAnonymously(auth).then(c => c.user).catch(() => null);
 
-  let snap;
-  try {
-    snap = await getDoc(doc(db, "polls", pollId));
-  } catch (e) {
-    root.innerHTML = notice("Could not load this poll. Check your connection.", "err");
-    return;
-  }
+  const snap = await withRetry(() => getDoc(doc(db, "polls", pollId)));
   if (!snap.exists()) { root.innerHTML = notice("This poll could not be found.", "err"); return; }
 
   const poll = snap.data();
@@ -112,17 +143,16 @@ export async function renderPoll(root, pollId) {
   // Anonymous sign-in was kicked off above; await its result here.
   const authedUser = await authPromise;
   let uid = authedUser?.uid ?? null;
-  let authReady = !!uid;
 
   const votedKey = `pollx_voted_${pollId}`;
-  let alreadyVoted = localStorage.getItem(votedKey) === "1";
+  let alreadyVoted = store.get(votedKey) === "1";
   // The server is the source of truth: if an admin deletes this person's vote,
   // they should see the form again even though localStorage remembered voting.
   if (uid) {
     try {
       const own = await getDoc(doc(db, "polls", pollId, "responses", uid));
       alreadyVoted = own.exists();
-      if (alreadyVoted) localStorage.setItem(votedKey, "1"); else localStorage.removeItem(votedKey);
+      if (alreadyVoted) store.set(votedKey, "1"); else store.remove(votedKey);
     } catch (e) { /* read not allowed / offline — keep the localStorage hint */ }
   }
 
@@ -165,12 +195,9 @@ export async function renderPoll(root, pollId) {
       body.innerHTML = notice("Thanks — your response has been recorded.", "ok");
       return;
     }
-    if (!authReady) {
-      body.innerHTML = notice(
-        "Voting is temporarily unavailable. (The site owner needs to enable Anonymous sign-in in Firebase.)",
-        "err");
-      return;
-    }
+    // Note: the form renders even if anonymous sign-in hasn't succeeded yet.
+    // Sign-in is retried at submit time, so a transient failure while the page
+    // loaded doesn't block anyone from voting.
 
     body.innerHTML = `
       <form id="pollx-form">
@@ -310,28 +337,43 @@ export async function renderPoll(root, pollId) {
     }
 
     btn.disabled = true; msg.textContent = "Submitting…";
+
+    // If the sign-in that started at page load didn't stick (flaky network,
+    // strict embed environment), try again now rather than losing the vote.
+    if (!uid) {
+      try {
+        const u = await withRetry(() => signInAnonymously(auth).then(c => c.user), 2);
+        uid = u?.uid ?? null;
+      } catch (e) { uid = null; }
+      if (!uid) {
+        btn.disabled = false;
+        msg.textContent = "Could not connect — your vote was NOT submitted. Please check your connection and press Submit again.";
+        return;
+      }
+    }
+
     try {
-      await setDoc(doc(db, "polls", pollId, "responses", uid), {
+      await withRetry(() => setDoc(doc(db, "polls", pollId, "responses", uid), {
         answers: votes,
         createdAt: serverTimestamp()
-      });
+      }));
       if (Object.keys(details).length) {
-        await setDoc(doc(db, "polls", pollId, "details", uid), {
+        await withRetry(() => setDoc(doc(db, "polls", pollId, "details", uid), {
           answers: details,
           createdAt: serverTimestamp()
-        });
+        }));
       }
-      localStorage.setItem(votedKey, "1");
+      store.set(votedKey, "1");
       alreadyVoted = true;
       confirmSubmitted(form);
     } catch (err) {
       btn.disabled = false;
       if (String(err?.code).includes("permission-denied")) {
-        localStorage.setItem(votedKey, "1");
+        store.set(votedKey, "1");
         alreadyVoted = true;
         confirmSubmitted(form);
       } else {
-        msg.textContent = "Something went wrong. Please try again.";
+        msg.textContent = "Something went wrong and your vote was NOT submitted. Please press Submit again.";
       }
     }
   }
@@ -349,7 +391,7 @@ export async function renderPoll(root, pollId) {
 
     let responses = null;
     try {
-      const rs = await getDocs(collection(db, "polls", pollId, "responses"));
+      const rs = await withRetry(() => getDocs(collection(db, "polls", pollId, "responses")), 2);
       responses = rs.docs.map(d => d.data());
     } catch (e) {
       responses = null; // read denied -> results still hidden
