@@ -6,8 +6,13 @@
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
-  <link rel="modulepreload" href="./assets/poll-widget.js?v=3">
+  <link rel="modulepreload" href="./assets/poll-widget.js?v=4">
   <link rel="modulepreload" href="./assets/firebase-config.js">
+  <!-- Preload the Firebase SDK entry modules too, so they download in parallel
+       with our own modules instead of being discovered one import at a time. -->
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js" crossorigin>
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-lite.js" crossorigin>
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js" crossorigin>
   <title>Poll</title>
   <style>
     html,body{margin:0;padding:0;background:transparent}
@@ -17,11 +22,13 @@
   </style>
 </head>
 <body>
-  <!-- The poll renders here. The poll id comes from the ?id= query string. -->
-  <div id="pollx-root"></div>
+  <!-- The poll renders here. The poll id comes from the ?id= query string.
+       The static text below shows the instant the HTML arrives — long before
+       the scripts finish — so embeds never sit blank while loading. -->
+  <div id="pollx-root"><p style="font-family:system-ui,sans-serif;color:#888">Loading poll…</p></div>
 
   <script type="module">
-    import { renderPoll } from "./assets/poll-widget.js?v=3";
+    import { renderPoll } from "./assets/poll-widget.js?v=4";
 
     const params = new URLSearchParams(location.search);
     const pollId = params.get("id");

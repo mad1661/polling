@@ -140,21 +140,27 @@ async function renderPollInner(root, pollId) {
   const now = new Date();
   const isOpen = !closesAt || now < closesAt;
 
-  // Anonymous sign-in was kicked off above; await its result here.
-  const authedUser = await authPromise;
-  let uid = authedUser?.uid ?? null;
-
+  // Speed: paint the poll after ONE round-trip (the poll config above). Sign-in
+  // and the already-voted server check finish in the background below and only
+  // touch the page if they change what should be shown.
+  let uid = null;
   const votedKey = `pollx_voted_${pollId}`;
   let alreadyVoted = store.get(votedKey) === "1";
-  // The server is the source of truth: if an admin deletes this person's vote,
-  // they should see the form again even though localStorage remembered voting.
-  if (uid) {
+
+  const reconcile = (async () => {
+    const authedUser = await authPromise;
+    uid = authedUser?.uid ?? null;
+    if (!uid) return;
+    // The server is the source of truth: if an admin deletes this person's vote,
+    // they should see the form again even though localStorage remembered voting.
     try {
       const own = await getDoc(doc(db, "polls", pollId, "responses", uid));
+      const before = alreadyVoted;
       alreadyVoted = own.exists();
       if (alreadyVoted) store.set(votedKey, "1"); else store.remove(votedKey);
+      if (alreadyVoted !== before) renderBody();
     } catch (e) { /* read not allowed / offline — keep the localStorage hint */ }
-  }
+  })();
 
   // Ranking-question state: qid -> ordered array of chosen option ids.
   const rankState = {};
@@ -338,8 +344,10 @@ async function renderPollInner(root, pollId) {
 
     btn.disabled = true; msg.textContent = "Submitting…";
 
-    // If the sign-in that started at page load didn't stick (flaky network,
-    // strict embed environment), try again now rather than losing the vote.
+    // The page-load sign-in may still be in flight — give it a chance first.
+    if (!uid) { await reconcile; }
+    // If it didn't stick (flaky network, strict embed environment), try again
+    // fresh now rather than losing the vote.
     if (!uid) {
       try {
         const u = await withRetry(() => signInAnonymously(auth).then(c => c.user), 2);
@@ -388,6 +396,15 @@ async function renderPollInner(root, pollId) {
     // here — no "Results" heading, no placeholder. The voting-close date is
     // already shown at the top of the poll, which is all the public needs.
     if (poll.hideResults) { el.innerHTML = ""; return; }
+
+    // Before the reveal time the rules deny the public read anyway — skip the
+    // wasted round-trip and show the notice straight away. (Admins can always
+    // watch live results in the dashboard.)
+    if (revealAt && now < revealAt) {
+      el.innerHTML = `<h2 class="pollx-section-title">Results</h2>` +
+        notice(`Results are hidden until ${fmt(revealAt)}.`, "");
+      return;
+    }
 
     let responses = null;
     try {
