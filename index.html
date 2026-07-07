@@ -64,6 +64,9 @@
     .pill.hidden{background:#fff4e5;color:#a35b00}.pill.shown{background:#e9f0ff;color:#284bbd}
     .poll-item{border:1px solid var(--line);border-radius:12px;padding:1rem;margin:.7rem 0}
     .poll-item .top{display:flex;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+    .danger-zone{border-top:1px dashed var(--line);margin-top:.9rem;padding-top:.6rem;text-align:right}
+    .danger-zone .link{font-size:.82rem;opacity:.75}
+    .danger-zone .link:hover{opacity:1;text-decoration:underline}
     .resp-row{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;border:1px solid var(--line);border-radius:9px;padding:.55rem .7rem;margin:.4rem 0}
     .resp-row > div{min-width:0;overflow-wrap:anywhere}
     .msg{padding:.6rem .8rem;border-radius:9px;margin:.6rem 0;font-size:.92rem}
@@ -582,13 +585,13 @@
           <div class="muted" style="font-size:.86rem;margin:.5rem 0">
             ${hideResults?"Results: private (never shown to the public)":"Reveals: "+fmt(revealAt)} · Closes: ${fmt(closesAt)}
           </div>
-          <div class="row" style="justify-content:space-between;align-items:center">
-            <div class="row">
-              <button class="btn sm" data-act="results">View results</button>
-              <button class="btn secondary sm" data-act="embed">Get embed code</button>
-              <button class="btn secondary sm" data-act="edit">Edit</button>
-            </div>
-            <button class="btn danger sm" data-act="delete" title="Permanently delete this poll" style="margin-left:auto">🗑 Delete poll…</button>
+          <div class="row">
+            <button class="btn sm" data-act="results">View results</button>
+            <button class="btn secondary sm" data-act="embed">Get embed code</button>
+            <button class="btn secondary sm" data-act="edit">Edit</button>
+          </div>
+          <div class="danger-zone">
+            <button class="link danger" data-act="delete" title="Permanently delete this poll and all its responses">🗑 Delete this poll…</button>
           </div>`;
         item.querySelector('[data-act="results"]').onclick = () => viewResults(id, p);
         item.querySelector('[data-act="embed"]').onclick = () => showEmbed(id, p);
@@ -891,7 +894,7 @@ window.addEventListener("message",function(e){
 <body style="margin:0;padding:16px;font-family:system-ui,-apple-system,Segoe UI,sans-serif">
 <div id="${frameId}"></div>
 <script type="module">
-import { renderPoll } from "${origin}/assets/poll-widget.js?v=2";
+import { renderPoll } from "${origin}/assets/poll-widget.js?v=3";
 renderPoll(document.getElementById("${frameId}"), "${id}");
 <\/script>
 </body>
@@ -899,7 +902,7 @@ renderPoll(document.getElementById("${frameId}"), "${id}");
       const snippet =
 `<div id="${frameId}"></div>
 <script type="module">
-  import { renderPoll } from "${origin}/assets/poll-widget.js?v=2";
+  import { renderPoll } from "${origin}/assets/poll-widget.js?v=3";
   renderPoll(document.getElementById("${frameId}"), "${id}");
 <\/script>`;
 
