@@ -1,8 +1,14 @@
-name: Deploy to Firebase Hosting on merge
+name: Deploy to Firebase (hosting + rules) on merge
 
 # Runs when commits land on main (i.e. when this/any PR is merged), and can also
-# be triggered by hand from the Actions tab. Publishes the site to the live
-# Hosting channel: https://polling-d51ee.web.app
+# be triggered by hand from the Actions tab. Publishes BOTH:
+#   * the Firestore security rules (firestore.rules), and
+#   * the site, to the live Hosting channel: https://polling-d51ee.web.app
+#
+# Rules deploy first: if another app is ever deployed over this Firebase
+# project (overwriting the rules and locking everyone out of the polls),
+# re-running this workflow restores access. The poll data itself lives in
+# Firestore and is not touched by deploys.
 on:
   push:
     branches: [main]
@@ -34,6 +40,25 @@ jobs:
 
       - name: Check out the repository
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Publishing firestore.rules needs the service account to have the
+      # "Firebase Rules Admin" role in addition to Hosting Admin (grant it in
+      # Google Cloud Console -> IAM). The error message below points there.
+      - name: Deploy the Firestore security rules
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_POLLING_D51EE }}
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          if ! npx --yes firebase-tools deploy --only firestore:rules --project polling-d51ee --non-interactive; then
+            echo "::error::Deploying firestore.rules failed. If the log shows a permission error, grant the deploy service account the 'Firebase Rules Admin' role (Google Cloud Console → IAM), then re-run this workflow."
+            exit 1
+          fi
 
       - name: Deploy to the live Hosting channel
         uses: FirebaseExtended/action-hosting-deploy@v0
