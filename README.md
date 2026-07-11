@@ -71,9 +71,14 @@ This publishes:
 
 ## Auto-deploy on merge (GitHub Actions)
 
-`.github/workflows/firebase-hosting-deploy.yml` redeploys the **website** to the
-live channel automatically whenever changes land on `main` (e.g. when a PR is
-merged). It needs **one** repository secret holding a Google service-account key.
+`.github/workflows/firebase-hosting-deploy.yml` redeploys the **website** and the
+**Firestore security rules** automatically whenever changes land on `main` (e.g.
+when a PR is merged). It needs **one** repository secret holding a Google
+service-account key.
+
+> **Heads up:** until that secret is added the workflow fails immediately and
+> **nothing auto-deploys** — every change has to be published by hand with
+> `firebase deploy`.
 
 **1. Create a service account key with hosting permission**
 
@@ -90,6 +95,10 @@ Or do it manually:
   (e.g. `github-deploy`), grant it the **Firebase Hosting Admin** role, then
   **Keys → Add key → Create new key → JSON** and download it.
 
+Either way, also grant the service account the **Firebase Rules Admin** role
+(Google Cloud Console → IAM) — that's what lets the workflow publish
+`firestore.rules` alongside the site.
+
 **2. Add it as a GitHub secret**
 
 Repo **Settings → Secrets and variables → Actions → New repository secret**:
@@ -100,10 +109,34 @@ That's it — add the secret **before** merging, then every merge to `main` publ
 to `https://polling-d51ee.web.app`. You can also run it on demand from the
 **Actions** tab (“Run workflow”).
 
-> This workflow deploys **hosting only** (that's what auto-deploy on merge needs).
-> `firestore.rules` is deployed once during setup; redeploy it with
-> `firebase deploy --only firestore:rules` if you ever change it (or run that in
-> the workflow if your service account also has the *Firebase Rules Admin* role).
+---
+
+## If your polls suddenly "disappear" (recovering from an overwrite)
+
+Deploying **any other project** to the `polling-d51ee` Firebase project (even by
+accident) replaces two things: the hosted website **and** the Firestore
+**security rules**. Your poll data is NOT deleted — polls, votes and comments
+live in the Firestore database, which deploys never touch. But with foreign
+rules in place, neither the public widget nor the admin console is allowed to
+*read* the polls, so everything looks gone.
+
+To recover:
+
+1. **Restore the security rules** (this is usually the whole fix):
+   - *No CLI needed:* *Firebase Console → Firestore Database → Rules*, replace
+     whatever is there with the full contents of this repo's `firestore.rules`,
+     and click **Publish**. Or:
+   - *With the CLI:* from the repo root run
+     `firebase deploy --only firestore:rules`.
+2. **Restore the website** if it's showing the wrong app:
+   *Firebase Console → Hosting → Release history → roll back*, or run
+   `firebase deploy --only hosting` from the repo root.
+3. Reload the admin console — your polls (and all their votes) should be back.
+
+If the polls still don't appear after the correct rules are live, the data
+itself was changed — check *Firestore Database → Data → `polls`* in the console,
+and look into [point-in-time recovery](https://firebase.google.com/docs/firestore/pitr)
+to restore the database to a moment before the overwrite.
 
 ---
 
