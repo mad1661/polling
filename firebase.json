@@ -3,6 +3,7 @@
     "rules": "firestore.rules"
   },
   "hosting": {
+    "site": "polling-d51ee",
     "public": ".",
     "ignore": [
       "firebase.json",
